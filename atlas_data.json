@@ -1,0 +1,40 @@
+{
+  "nodes": {
+    "s-999": {
+      "id": "s-999",
+      "label": "Server",
+      "properties": {
+        "hostname": "prod-db-01",
+        "ip": "192.168.1.50"
+      }
+    },
+    "u-001": {
+      "id": "u-001",
+      "label": "User",
+      "properties": {
+        "role": "Admin",
+        "username": "j_doe"
+      }
+    },
+    "inc-204": {
+      "id": "inc-204",
+      "label": "Incident",
+      "properties": {
+        "severity": "High",
+        "status": "Open"
+      }
+    }
+  },
+  "relations": [
+    {
+      "sourceId": "u-001",
+      "targetId": "s-999",
+      "type": "MANAGES"
+    },
+    {
+      "sourceId": "s-999",
+      "targetId": "inc-204",
+      "type": "HAS_ALERT"
+    }
+  ]
+}

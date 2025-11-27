@@ -1,0 +1,2 @@
+# AtlasDB Lite
+A lightweight, serverless graph database engine written in pure Java. Designed for restricted environments, it persists node-relationship data to local JSON storage without requiring external installation or administrative privileges.
