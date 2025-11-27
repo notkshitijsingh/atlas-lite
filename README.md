@@ -32,7 +32,7 @@ AtlasDB-Lite uses a manual Maven directory structure to maintain a minimal footp
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/your-org/atlasdb-lite.git](https://github.com/your-org/atlasdb-lite.git)
+    git clone https://github.com/kshitijsinghcts/atlas-lite.git
     cd atlasdb-lite
     ```
 
