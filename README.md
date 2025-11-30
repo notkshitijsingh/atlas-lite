@@ -32,7 +32,7 @@ AtlasDB-Lite uses a manual Maven directory structure to maintain a minimal footp
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/kshitijsinghcts/atlas-lite.git
+    git clone https://github.com/notkshitijsingh/atlas-lite.git
     cd atlasdb-lite
     ```
 
@@ -109,5 +109,12 @@ Upon the first run, AtlasDB-Lite generates a unique key file: atlas.key.
 4. Push to the Branch (git push origin feature/AmazingFeature)
 
 5. Open a Pull Request
+
+## 👷‍♂️ Work in Progress
+1. Fixing Concurrency (The "Race Condition" Issue)
+
+2. Fixing Durability and Write Speed
+
+3. Increasing Scalability (currently limited by RAM size)
 ---
 <p align='center'>Made with ❤️ by <a href='https://www.github.com/notkshitijsingh'>notkshitijsingh</a></p>
