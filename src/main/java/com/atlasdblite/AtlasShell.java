@@ -5,14 +5,12 @@ import com.atlasdblite.commands.*;
 import java.util.Scanner;
 
 public class AtlasShell {
-    // NOW A DIRECTORY
     private static final String DB_DIR = "atlas_db";
 
     public static void main(String[] args) {
         GraphEngine engine = new GraphEngine(DB_DIR);
         CommandRegistry registry = new CommandRegistry();
 
-        // Register Commands (Same as before)
         registry.register(new AddNodeCommand());
         registry.register(new UpdateNodeCommand());
         registry.register(new DeleteNodeCommand());
@@ -25,45 +23,44 @@ public class AtlasShell {
         registry.register(new ExportCommand());
         registry.register(new NukeCommand());
         registry.register(new ServerCommand());
+        
+        // NEW COMMANDS
+        registry.register(new IndexCommand());
+        registry.register(new ExitCommand());
 
         Scanner scanner = new Scanner(System.in);
         printBanner();
 
         while (true) {
-            System.out.print("atlas-sharded> "); // Updated Prompt
+            System.out.print("atlas-sharded> ");
             String input = scanner.nextLine().trim();
 
             if (input.isEmpty()) continue;
-            if (input.equalsIgnoreCase("exit")) break;
-            if (input.equalsIgnoreCase("clear")) {
-                System.out.print("\033[H\033[2J");
-                System.out.flush();
-                continue;
-            }
+
+            // Explicit help check restored
             if (input.equalsIgnoreCase("help")) {
                 registry.printHelp();
                 continue;
             }
-
+            
+            // Note: ExitCommand now handles "exit" logic, but we keep this check 
+            // to allow 'exit' typed directly to find the command in the registry
+            // or just break if not using execute() path.
+            
             String[] tokens = input.split("\\s+");
-            String commandName = tokens[0];
-
-            Command cmd = registry.get(commandName);
+            Command cmd = registry.get(tokens[0]);
+            
             if (cmd != null) {
                 try {
                     cmd.execute(tokens, engine);
                 } catch (Exception e) {
-                    System.out.println(" [CRASH] Command failed: " + e.getMessage());
+                    System.out.println(" [CRASH] " + e.getMessage());
                 }
             } else {
                 System.out.println(" Unknown command. Type 'help'.");
             }
+            scanner.close();
         }
-        
-        new ServerCommand().execute(new String[]{"server", "stop"}, engine);
-        System.out.println("Session closed. Shards saved.");
-        System.exit(0);
-        scanner.close();
     }
 
     private static void printBanner() {

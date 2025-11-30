@@ -2,24 +2,56 @@ package com.atlasdblite.commands;
 
 import com.atlasdblite.engine.GraphEngine;
 import com.atlasdblite.models.Node;
+import java.util.UUID;
 
 public class AddNodeCommand extends AbstractCommand {
     @Override
     public String getName() { return "add-node"; }
 
     @Override
-    public String getDescription() { return "Creates a node. Usage: add-node <id> <label> [key:value]"; }
+    public String getDescription() { 
+        return "Creates a node. Usage: add-node [ID] <LABEL> [key:val]... (ID auto-generated if omitted)"; 
+    }
 
     @Override
     public void execute(String[] args, GraphEngine engine) {
-        if (!validateArgs(args, 2, "add-node <id> <label> [prop:val]")) return;
+        if (args.length < 2) {
+            printError("Usage: add-node [id] <label> [prop:val]...");
+            return;
+        }
 
-        String id = args[1];
-        String label = args[2];
+        String id;
+        String label;
+        int propStartIndex;
+
+        // SMART DETECTION LOGIC
+        // Case A: User typed "add-node Person name:Arnav" (Skipped ID)
+        // We detect this because the 3rd word (index 2) contains ':' OR we only have 2 args
+        boolean isAutoId = false;
+        
+        if (args.length == 2) {
+            // "add-node Person" -> Auto ID
+            isAutoId = true;
+        } else if (args.length > 2 && args[2].contains(":")) {
+            // "add-node Person name:Arnav" -> args[2] is a property, so args[1] must be Label
+            isAutoId = true;
+        }
+
+        if (isAutoId) {
+            id = UUID.randomUUID().toString().substring(0, 8); // Short UUID
+            label = args[1];
+            propStartIndex = 2; // Properties start immediately after label
+        } else {
+            // Case B: User typed "add-node u1 Person name:Arnav" (Explicit ID)
+            id = args[1];
+            label = args[2];
+            propStartIndex = 3;
+        }
+
         Node node = new Node(id, label);
 
-        // Parse optional properties (format key:value)
-        for (int i = 3; i < args.length; i++) {
+        // Parse properties
+        for (int i = propStartIndex; i < args.length; i++) {
             String[] prop = args[i].split(":");
             if (prop.length == 2) {
                 node.addProperty(prop[0], prop[1]);
