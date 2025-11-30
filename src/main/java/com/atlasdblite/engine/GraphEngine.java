@@ -1,134 +1,141 @@
 package com.atlasdblite.engine;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.atlasdblite.models.Node;
 import com.atlasdblite.models.Relation;
 import com.atlasdblite.security.CryptoManager;
 
-import java.nio.file.*;
+import java.io.File;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Sharded Graph Engine.
+ * Routes data to 16 buckets based on hash(ID).
+ */
 public class GraphEngine {
-    private Map<String, Node> nodeIndex = new HashMap<>();
-    private List<Relation> relationStore = new ArrayList<>();
-    
-    private final String storagePath;
-    private final Gson gson;
+    private static final int BUCKET_COUNT = 16;
+    private final DataSegment[] segments;
+    private final String dbDirectory;
     private final CryptoManager crypto;
 
-    public GraphEngine(String storagePath) {
-        this.storagePath = storagePath; // Expecting a .enc file path
-        this.gson = new GsonBuilder().setPrettyPrinting().create();
+    public GraphEngine(String dbDirectory) {
+        this.dbDirectory = dbDirectory;
         this.crypto = new CryptoManager();
-        initializeStorage();
+        this.segments = new DataSegment[BUCKET_COUNT];
+        
+        initialize();
     }
 
-    // --- Write Operations (CRUD) ---
+    private void initialize() {
+        File dir = new File(dbDirectory);
+        if (!dir.exists()) dir.mkdirs();
+
+        for (int i = 0; i < BUCKET_COUNT; i++) {
+            segments[i] = new DataSegment(i, dbDirectory, crypto);
+        }
+        // Lazy load: We don't load data until requested
+    }
+
+    // --- Routing Logic ---
+    private DataSegment getSegment(String id) {
+        int hash = Math.abs(id.hashCode());
+        return segments[hash % BUCKET_COUNT];
+    }
+
+    // --- CRUD ---
 
     public void persistNode(Node node) {
-        nodeIndex.put(node.getId(), node);
-        commit();
+        getSegment(node.getId()).putNode(node);
+        commit(); // In "Lite" mode we still auto-save, but now it's partial!
     }
 
     public boolean updateNode(String id, String key, String value) {
-        Node node = nodeIndex.get(id);
+        Node node = getSegment(id).getNode(id);
         if (node == null) return false;
-        
         node.addProperty(key, value);
+        // Mark bucket dirty implicitly? DataSegment.putNode/getNode references are object refs.
+        // We re-put to ensure dirty flag is set
+        getSegment(id).putNode(node); 
         commit();
         return true;
     }
 
     public boolean deleteNode(String id) {
-        if (!nodeIndex.containsKey(id)) return false;
-        
-        // 1. Remove the node
-        nodeIndex.remove(id);
-        
-        // 2. Cascade delete: Remove all relations involving this node to prevent orphans
-        relationStore.removeIf(r -> r.getSourceId().equals(id) || r.getTargetId().equals(id));
+        // 1. Remove Node from its home bucket
+        boolean removed = getSegment(id).removeNode(id);
+        if (!removed) return false;
+
+        // 2. Cross-Shard Cleanup: Remove relations pointing TO this node in ALL buckets
+        for (DataSegment seg : segments) {
+            seg.removeRelationsTo(id);
+        }
         
         commit();
         return true;
     }
 
     public void persistRelation(String fromId, String toId, String type) {
-        if (!nodeIndex.containsKey(fromId) || !nodeIndex.containsKey(toId)) {
-            throw new IllegalArgumentException("Error: Source or Target node does not exist.");
+        // Ensure both exist (requires checking their respective buckets)
+        if (getSegment(fromId).getNode(fromId) == null || 
+            getSegment(toId).getNode(toId) == null) {
+            throw new IllegalArgumentException("Source or Target node does not exist.");
         }
-        relationStore.add(new Relation(fromId, toId, type));
+
+        // Store relation in SOURCE bucket (adjacency list style)
+        Relation r = new Relation(fromId, toId, type);
+        getSegment(fromId).addRelation(r);
         commit();
     }
 
-    public void wipeDatabase() {
-        nodeIndex.clear();
-        relationStore.clear();
-        commit();
-    }
-
-    // --- Read Operations (Querying) ---
+    // --- Querying ---
 
     public Node getNode(String id) {
-        return nodeIndex.get(id);
+        return getSegment(id).getNode(id);
     }
 
-    public Collection<Node> getAllNodes() {
-        return nodeIndex.values();
-    }
-
-    public List<Relation> getAllRelations() {
-        return relationStore;
-    }
-
-    public List<Node> traverse(String fromId, String relationType) {
-        return relationStore.stream()
-                .filter(r -> r.getSourceId().equals(fromId) && r.getType().equalsIgnoreCase(relationType))
-                .map(r -> nodeIndex.get(r.getTargetId()))
+    public List<Node> traverse(String fromId, String type) {
+        // 1. Get relations from source bucket
+        List<Relation> links = getSegment(fromId).getRelationsFrom(fromId);
+        
+        // 2. Resolve targets (may span multiple buckets)
+        return links.stream()
+                .filter(r -> r.getType().equalsIgnoreCase(type))
+                .map(r -> getSegment(r.getTargetId()).getNode(r.getTargetId())) // Cross-shard lookup
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
 
-    // --- Encrypted Storage Layer ---
+    // --- Admin ---
 
+    public Collection<Node> getAllNodes() {
+        List<Node> all = new ArrayList<>();
+        for (DataSegment seg : segments) all.addAll(seg.getNodes());
+        return all;
+    }
+    
+    public List<Relation> getAllRelations() {
+        List<Relation> all = new ArrayList<>();
+        for (DataSegment seg : segments) all.addAll(seg.getAllRelations());
+        return all;
+    }
+
+    public void wipeDatabase() {
+        for (DataSegment seg : segments) {
+            // Delete files physically
+            // Implementation simplified: just empty memory and save
+            // Real impl would delete files
+        }
+        File dir = new File(dbDirectory);
+        for(File f: dir.listFiles()) f.delete();
+        initialize(); // Reset segments
+    }
+
+    // --- Storage ---
+    
     private void commit() {
-        try {
-            StorageSchema schema = new StorageSchema(nodeIndex, relationStore);
-            String rawJson = gson.toJson(schema);
-            
-            // Encrypt before writing to disk
-            String encryptedData = crypto.encrypt(rawJson); 
-            Files.write(Paths.get(storagePath), encryptedData.getBytes());
-        } catch (Exception e) {
-            System.err.println("Critical IO Error during save: " + e.getMessage());
+        // Only saves buckets that are marked 'dirty'
+        for (DataSegment seg : segments) {
+            seg.save();
         }
-    }
-
-    private void initializeStorage() {
-        if (!Files.exists(Paths.get(storagePath))) return;
-        
-        try {
-            byte[] encryptedBytes = Files.readAllBytes(Paths.get(storagePath));
-            String encryptedData = new String(encryptedBytes);
-            
-            // Decrypt after reading from disk
-            String rawJson = crypto.decrypt(encryptedData); 
-            
-            StorageSchema schema = gson.fromJson(rawJson, StorageSchema.class);
-            if (schema != null) {
-                if (schema.nodes != null) this.nodeIndex = schema.nodes;
-                if (schema.relations != null) this.relationStore = schema.relations;
-            }
-        } catch (Exception e) {
-            System.err.println("Could not load database. Key mismatch or corrupt file.");
-        }
-    }
-
-    // Internal Schema for JSON Serialization
-    private static class StorageSchema {
-        Map<String, Node> nodes;
-        List<Relation> relations;
-        StorageSchema(Map<String, Node> n, List<Relation> r) { this.nodes = n; this.relations = r; }
     }
 }

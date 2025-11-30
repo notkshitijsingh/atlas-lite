@@ -5,13 +5,14 @@ import com.atlasdblite.commands.*;
 import java.util.Scanner;
 
 public class AtlasShell {
-    private static final String DB_FILE = "atlas_data.enc";
+    // NOW A DIRECTORY
+    private static final String DB_DIR = "atlas_db";
 
     public static void main(String[] args) {
-        GraphEngine engine = new GraphEngine(DB_FILE);
+        GraphEngine engine = new GraphEngine(DB_DIR);
         CommandRegistry registry = new CommandRegistry();
 
-        // Register Commands
+        // Register Commands (Same as before)
         registry.register(new AddNodeCommand());
         registry.register(new UpdateNodeCommand());
         registry.register(new DeleteNodeCommand());
@@ -23,15 +24,13 @@ public class AtlasShell {
         registry.register(new BackupCommand());
         registry.register(new ExportCommand());
         registry.register(new NukeCommand());
-        
-        // NEW: Register Server Command
         registry.register(new ServerCommand());
 
         Scanner scanner = new Scanner(System.in);
         printBanner();
 
         while (true) {
-            System.out.print("atlas-secure> ");
+            System.out.print("atlas-sharded> "); // Updated Prompt
             String input = scanner.nextLine().trim();
 
             if (input.isEmpty()) continue;
@@ -61,10 +60,8 @@ public class AtlasShell {
             }
         }
         
-        // Cleanup: Force stop server if running on exit
         new ServerCommand().execute(new String[]{"server", "stop"}, engine);
-        System.out.println("Session closed. Data encrypted.");
-        scanner.close();
+        System.out.println("Session closed. Shards saved.");
         System.exit(0);
     }
 
@@ -74,6 +71,6 @@ public class AtlasShell {
         System.out.println("  / _ \\| __| |/ _` / __|| | | |  _ \\ ");
         System.out.println(" / ___ \\ |_| | (_| \\__ \\| |_| | |_) |");
         System.out.println("/_/   \\_\\__|_|\\__,_|___/|____/|____/ ");
-        System.out.println("      SECURE SHELL v2.2 | WEB API    ");
+        System.out.println("      SCALABLE SHELL v3.0 | SHARDED  ");
     }
 }
