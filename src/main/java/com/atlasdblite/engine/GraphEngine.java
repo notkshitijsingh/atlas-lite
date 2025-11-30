@@ -1,134 +1,123 @@
 package com.atlasdblite.engine;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.atlasdblite.models.Node;
 import com.atlasdblite.models.Relation;
 import com.atlasdblite.security.CryptoManager;
 
-import java.nio.file.*;
+import java.io.File;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class GraphEngine {
-    private Map<String, Node> nodeIndex = new HashMap<>();
-    private List<Relation> relationStore = new ArrayList<>();
-    
-    private final String storagePath;
-    private final Gson gson;
+    private static final int BUCKET_COUNT = 16;
+    private final DataSegment[] segments;
+    private final String dbDirectory;
     private final CryptoManager crypto;
+    private boolean autoIndexing = false;
 
-    public GraphEngine(String storagePath) {
-        this.storagePath = storagePath; // Expecting a .enc file path
-        this.gson = new GsonBuilder().setPrettyPrinting().create();
+    public GraphEngine(String dbDirectory) {
+        this.dbDirectory = dbDirectory;
         this.crypto = new CryptoManager();
-        initializeStorage();
+        this.segments = new DataSegment[BUCKET_COUNT];
+        initialize();
     }
 
-    // --- Write Operations (CRUD) ---
+    private void initialize() {
+        File dir = new File(dbDirectory);
+        if (!dir.exists()) dir.mkdirs();
+        for (int i = 0; i < BUCKET_COUNT; i++) {
+            segments[i] = new DataSegment(i, dbDirectory, crypto);
+        }
+    }
+
+    public void setAutoIndexing(boolean enabled) {
+        this.autoIndexing = enabled;
+        System.out.println(" [ENGINE] Indexing set to: " + enabled + " (Rebuilding...)");
+        for (DataSegment seg : segments) {
+            seg.setIndexing(enabled);
+        }
+    }
+
+    public boolean isAutoIndexing() { return autoIndexing; }
+
+    public List<Node> search(String query) {
+        List<Node> results = new ArrayList<>();
+        // In sharded mode, we must ask every shard to search itself
+        for (DataSegment seg : segments) {
+            results.addAll(seg.search(query));
+        }
+        return results;
+    }
+
+    // --- Routing & CRUD (Delegates) ---
+    private DataSegment getSegment(String id) {
+        return segments[Math.abs(id.hashCode()) % BUCKET_COUNT];
+    }
 
     public void persistNode(Node node) {
-        nodeIndex.put(node.getId(), node);
+        getSegment(node.getId()).putNode(node);
         commit();
-    }
-
-    public boolean updateNode(String id, String key, String value) {
-        Node node = nodeIndex.get(id);
-        if (node == null) return false;
-        
-        node.addProperty(key, value);
-        commit();
-        return true;
     }
 
     public boolean deleteNode(String id) {
-        if (!nodeIndex.containsKey(id)) return false;
-        
-        // 1. Remove the node
-        nodeIndex.remove(id);
-        
-        // 2. Cascade delete: Remove all relations involving this node to prevent orphans
-        relationStore.removeIf(r -> r.getSourceId().equals(id) || r.getTargetId().equals(id));
-        
+        boolean removed = getSegment(id).removeNode(id);
+        if (removed) {
+            for (DataSegment seg : segments) seg.removeRelationsTo(id);
+            commit();
+        }
+        return removed;
+    }
+
+    public boolean updateNode(String id, String key, String value) {
+        Node node = getSegment(id).getNode(id);
+        if (node == null) return false;
+        node.addProperty(key, value);
+        getSegment(id).putNode(node); // Trigger index update
         commit();
         return true;
     }
 
     public void persistRelation(String fromId, String toId, String type) {
-        if (!nodeIndex.containsKey(fromId) || !nodeIndex.containsKey(toId)) {
-            throw new IllegalArgumentException("Error: Source or Target node does not exist.");
+        if (getSegment(fromId).getNode(fromId) == null || 
+            getSegment(toId).getNode(toId) == null) {
+            throw new IllegalArgumentException("Nodes not found");
         }
-        relationStore.add(new Relation(fromId, toId, type));
+        getSegment(fromId).addRelation(new Relation(fromId, toId, type));
         commit();
     }
 
-    public void wipeDatabase() {
-        nodeIndex.clear();
-        relationStore.clear();
-        commit();
-    }
+    public Node getNode(String id) { return getSegment(id).getNode(id); }
 
-    // --- Read Operations (Querying) ---
-
-    public Node getNode(String id) {
-        return nodeIndex.get(id);
-    }
-
-    public Collection<Node> getAllNodes() {
-        return nodeIndex.values();
-    }
-
-    public List<Relation> getAllRelations() {
-        return relationStore;
-    }
-
-    public List<Node> traverse(String fromId, String relationType) {
-        return relationStore.stream()
-                .filter(r -> r.getSourceId().equals(fromId) && r.getType().equalsIgnoreCase(relationType))
-                .map(r -> nodeIndex.get(r.getTargetId()))
+    public List<Node> traverse(String fromId, String type) {
+        List<Relation> links = getSegment(fromId).getRelationsFrom(fromId);
+        return links.stream()
+                .filter(r -> r.getType().equalsIgnoreCase(type))
+                .map(r -> getSegment(r.getTargetId()).getNode(r.getTargetId()))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
 
-    // --- Encrypted Storage Layer ---
-
-    private void commit() {
-        try {
-            StorageSchema schema = new StorageSchema(nodeIndex, relationStore);
-            String rawJson = gson.toJson(schema);
-            
-            // Encrypt before writing to disk
-            String encryptedData = crypto.encrypt(rawJson); 
-            Files.write(Paths.get(storagePath), encryptedData.getBytes());
-        } catch (Exception e) {
-            System.err.println("Critical IO Error during save: " + e.getMessage());
-        }
+    public Collection<Node> getAllNodes() {
+        List<Node> all = new ArrayList<>();
+        for (DataSegment seg : segments) all.addAll(seg.getNodes());
+        return all;
     }
 
-    private void initializeStorage() {
-        if (!Files.exists(Paths.get(storagePath))) return;
-        
-        try {
-            byte[] encryptedBytes = Files.readAllBytes(Paths.get(storagePath));
-            String encryptedData = new String(encryptedBytes);
-            
-            // Decrypt after reading from disk
-            String rawJson = crypto.decrypt(encryptedData); 
-            
-            StorageSchema schema = gson.fromJson(rawJson, StorageSchema.class);
-            if (schema != null) {
-                if (schema.nodes != null) this.nodeIndex = schema.nodes;
-                if (schema.relations != null) this.relationStore = schema.relations;
-            }
-        } catch (Exception e) {
-            System.err.println("Could not load database. Key mismatch or corrupt file.");
-        }
+    public List<Relation> getAllRelations() {
+        List<Relation> all = new ArrayList<>();
+        for (DataSegment seg : segments) all.addAll(seg.getAllRelations());
+        return all;
     }
 
-    // Internal Schema for JSON Serialization
-    private static class StorageSchema {
-        Map<String, Node> nodes;
-        List<Relation> relations;
-        StorageSchema(Map<String, Node> n, List<Relation> r) { this.nodes = n; this.relations = r; }
+    public void wipeDatabase() {
+        // Simple wipe logic for testing
+        for(DataSegment s : segments) s.setIndexing(false);
+        File dir = new File(dbDirectory);
+        if(dir.exists()) for(File f: dir.listFiles()) f.delete();
+        initialize();
+    }
+    
+    public void commit() {
+        for (DataSegment seg : segments) seg.save();
     }
 }

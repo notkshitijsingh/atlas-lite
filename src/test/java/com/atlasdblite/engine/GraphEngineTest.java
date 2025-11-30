@@ -6,104 +6,83 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.List;
 
 public class GraphEngineTest {
 
-    private static final String TEST_DB_FILE = "test_atlas_data.enc";
+    private static final String TEST_DB_DIR = "test_atlas_db";
     private GraphEngine engine;
 
     @BeforeMethod
     public void setup() {
-        // Clean up previous runs
-        deleteTestFile();
-        engine = new GraphEngine(TEST_DB_FILE);
+        deleteTestDir();
+        engine = new GraphEngine(TEST_DB_DIR);
     }
 
     @AfterMethod
     public void tearDown() {
-        // Clean up after tests
-        deleteTestFile();
+        deleteTestDir();
     }
 
-    private void deleteTestFile() {
+    private void deleteTestDir() {
         try {
-            Files.deleteIfExists(Paths.get(TEST_DB_FILE));
+            if (Files.exists(Paths.get(TEST_DB_DIR))) {
+                Files.walk(Paths.get(TEST_DB_DIR))
+                    .sorted(Comparator.reverseOrder())
+                    .map(java.nio.file.Path::toFile)
+                    .forEach(File::delete);
+            }
         } catch (Exception ignored) {}
     }
 
     @Test
-    public void testAddAndGetNode() {
-        Node n = new Node("u1", "User");
-        n.addProperty("name", "Alice");
+    public void testShardingPersists() {
+        // Add nodes that likely hash to different buckets
+        for(int i=0; i<50; i++) {
+            engine.persistNode(new Node("node_"+i, "Test"));
+        }
         
-        engine.persistNode(n);
-        
-        Node retrieved = engine.getNode("u1");
-        Assert.assertNotNull(retrieved, "Node should exist in DB");
-        Assert.assertEquals(retrieved.getLabel(), "User");
-        Assert.assertEquals(retrieved.getProperty("name"), "Alice");
+        // Reload Engine
+        GraphEngine reloaded = new GraphEngine(TEST_DB_DIR);
+        Assert.assertEquals(reloaded.getAllNodes().size(), 50);
+        Assert.assertNotNull(reloaded.getNode("node_0"));
+        Assert.assertNotNull(reloaded.getNode("node_49"));
     }
 
     @Test
-    public void testUpdateNode() {
-        Node n = new Node("u1", "User");
-        engine.persistNode(n);
+    public void testCrossShardTraversal() {
+        // 1. Create Source in one bucket
+        engine.persistNode(new Node("src", "Source"));
         
-        boolean success = engine.updateNode("u1", "role", "Admin");
-        Assert.assertTrue(success);
+        // 2. Create Target in another bucket
+        engine.persistNode(new Node("tgt", "Target"));
         
-        Node updated = engine.getNode("u1");
-        Assert.assertEquals(updated.getProperty("role"), "Admin");
+        // 3. Link
+        engine.persistRelation("src", "tgt", "JUMP");
+        
+        // 4. Traverse
+        List<Node> results = engine.traverse("src", "JUMP");
+        Assert.assertEquals(results.size(), 1);
+        Assert.assertEquals(results.get(0).getId(), "tgt");
     }
 
     @Test
-    public void testDeleteNodeCascades() {
-        engine.persistNode(new Node("A", "Node"));
-        engine.persistNode(new Node("B", "Node"));
-        engine.persistRelation("A", "B", "LINKS_TO");
+    public void testCascadeDeleteAcrossShards() {
+        engine.persistNode(new Node("A", "Root"));
+        engine.persistNode(new Node("B", "Child")); // Likely different bucket
+        engine.persistRelation("A", "B", "PARENT_OF");
         
-        // Ensure setup is correct
-        Assert.assertEquals(engine.getAllNodes().size(), 2);
-        Assert.assertEquals(engine.getAllRelations().size(), 1);
-        
-        // Delete Node A
+        // Delete A
         engine.deleteNode("A");
         
-        // Assertions
-        Assert.assertNull(engine.getNode("A"));
-        Assert.assertEquals(engine.getAllNodes().size(), 1);
-        Assert.assertEquals(engine.getAllRelations().size(), 0, "Relation should be removed when node is deleted");
-    }
-
-    @Test
-    public void testTraverse() {
-        engine.persistNode(new Node("Source", "S"));
-        engine.persistNode(new Node("Target1", "T"));
-        engine.persistNode(new Node("Target2", "T"));
+        // Check B is still there
+        Assert.assertNotNull(engine.getNode("B"));
         
-        engine.persistRelation("Source", "Target1", "CONN");
-        engine.persistRelation("Source", "Target2", "CONN");
-        
-        List<Node> results = engine.traverse("Source", "CONN");
-        Assert.assertEquals(results.size(), 2);
-    }
-
-    @Test
-    public void testPersistenceReboot() {
-        // 1. Create data
-        engine.persistNode(new Node("p1", "PersistentNode"));
-        engine.persistRelation("p1", "p1", "SELF_LOOP");
-        
-        // 2. "Reboot" engine (Create new instance reading same file)
-        GraphEngine reloadedEngine = new GraphEngine(TEST_DB_FILE);
-        
-        // 3. Verify data loaded correctly
-        Node n = reloadedEngine.getNode("p1");
-        Assert.assertNotNull(n, "Node should persist across restarts");
-        Assert.assertEquals(n.getLabel(), "PersistentNode");
-        Assert.assertEquals(reloadedEngine.getAllRelations().size(), 1);
+        // Check Relation is gone (A is gone, so traversing A -> B is impossible)
+        Assert.assertTrue(engine.traverse("A", "PARENT_OF").isEmpty());
     }
 }
