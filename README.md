@@ -115,6 +115,6 @@ Upon the first run, AtlasDB-Lite generates a unique key file: atlas.key.
 
 2. Fixing Durability and Write Speed
 
-3. Increasing Scalability (currently limited by RAM size)
+~~3. Increasing Scalability (currently limited by RAM size)~~
 ---
 <p align='center'>Made with ❤️ by <a href='https://www.github.com/notkshitijsingh'>notkshitijsingh</a></p>
