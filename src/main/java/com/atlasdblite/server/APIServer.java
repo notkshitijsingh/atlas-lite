@@ -2,18 +2,21 @@ package com.atlasdblite.server;
 
 import com.atlasdblite.engine.GraphEngine;
 import com.atlasdblite.models.Node;
+import com.atlasdblite.models.Relation;
 import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
 
 public class APIServer {
     private final GraphEngine engine;
@@ -31,31 +34,48 @@ public class APIServer {
         server = HttpServer.create(new InetSocketAddress(port), 0);
         server.setExecutor(Executors.newCachedThreadPool());
 
-        // --- Define Routes ---
-        
-        // GET /api/status
-        server.createContext("/api/status", exchange -> 
-            sendResponse(exchange, 200, "{\"status\":\"online\",\"engine\":\"AtlasDB-Lite\"}"));
-
-        // GET /api/nodes
-        server.createContext("/api/nodes", exchange -> {
-            if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                String json = gson.toJson(engine.getAllNodes());
-                sendResponse(exchange, 200, json);
-            } else {
-                sendResponse(exchange, 405, "Method Not Allowed");
+        // 1. Serve Dashboard (HTML)
+        server.createContext("/", exchange -> {
+            if (!exchange.getRequestURI().getPath().equals("/")) {
+                sendResponse(exchange, 404, "Not Found");
+                return;
+            }
+            try (InputStream is = getClass().getResourceAsStream("/web/index.html")) {
+                if (is == null) {
+                    sendResponse(exchange, 500, "Dashboard file not found in resources.");
+                    return;
+                }
+                byte[] htmlBytes = is.readAllBytes();
+                exchange.getResponseHeaders().set("Content-Type", "text/html");
+                exchange.sendResponseHeaders(200, htmlBytes.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(htmlBytes);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                sendResponse(exchange, 500, "Internal Server Error");
             }
         });
 
-        // POST /api/node -> Body: { "id": "u1", "label": "User" }
+        // 2. Full Graph Data for Visualization
+        server.createContext("/api/graph", exchange -> {
+            GraphDTO dto = new GraphDTO(engine.getAllNodes(), engine.getAllRelations());
+            sendResponse(exchange, 200, gson.toJson(dto));
+        });
+
+        // 3. Existing Endpoints
+        server.createContext("/api/status", exchange -> 
+            sendResponse(exchange, 200, "{\"status\":\"online\",\"engine\":\"AtlasDB-Lite\"}"));
+
+        server.createContext("/api/nodes", exchange -> 
+            sendResponse(exchange, 200, gson.toJson(engine.getAllNodes())));
+
         server.createContext("/api/node", exchange -> {
             if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 try {
                     NodeDTO dto = parseBody(exchange, NodeDTO.class);
                     Node node = new Node(dto.id, dto.label);
-                    if (dto.props != null) {
-                        dto.props.forEach(node::addProperty);
-                    }
+                    if (dto.props != null) dto.props.forEach(node::addProperty);
                     engine.persistNode(node);
                     sendResponse(exchange, 201, "{\"message\":\"Node Created\"}");
                 } catch (Exception e) {
@@ -64,7 +84,6 @@ public class APIServer {
             }
         });
 
-        // POST /api/link -> Body: { "from": "u1", "to": "s1", "type": "OWNS" }
         server.createContext("/api/link", exchange -> {
             if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 try {
@@ -76,15 +95,13 @@ public class APIServer {
                 }
             }
         });
-
-        // GET /api/search?q=admin
+        
         server.createContext("/api/search", exchange -> {
-            String query = exchange.getRequestURI().getQuery(); // returns "q=admin"
+            String query = exchange.getRequestURI().getQuery();
             if (query != null && query.startsWith("q=")) {
                 String term = query.split("=")[1].toLowerCase();
-                List<Node> matches = engine.getAllNodes().stream()
-                    .filter(n -> n.toString().toLowerCase().contains(term))
-                    .collect(Collectors.toList());
+                // Use engine search which handles index checking
+                List<Node> matches = engine.search(term);
                 sendResponse(exchange, 200, gson.toJson(matches));
             } else {
                 sendResponse(exchange, 400, "Missing query param 'q'");
@@ -92,22 +109,21 @@ public class APIServer {
         });
 
         server.start();
-        System.out.println(" [WEB] API Server listening on http://localhost:" + port);
+        System.out.println(" [WEB] Dashboard available at http://localhost:" + port);
     }
 
     public void stop() {
         if (server != null) {
             server.stop(0);
             server = null;
-            System.out.println(" [WEB] Server stopped.");
         }
     }
 
-    // --- Helpers ---
-
     private void sendResponse(HttpExchange exchange, int statusCode, String response) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        byte[] bytes = response.getBytes();
+        if (!exchange.getResponseHeaders().containsKey("Content-Type")) {
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+        }
+        byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
         exchange.sendResponseHeaders(statusCode, bytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
@@ -118,16 +134,14 @@ public class APIServer {
         return gson.fromJson(new InputStreamReader(exchange.getRequestBody()), clazz);
     }
 
-    // DTOs for JSON parsing
-    private static class NodeDTO {
-        String id;
-        String label;
-        Map<String, String> props;
-    }
-
-    private static class LinkDTO {
-        String from;
-        String to;
-        String type;
+    // DTOs
+    private static class NodeDTO { String id; String label; Map<String, String> props; }
+    private static class LinkDTO { String from; String to; String type; }
+    
+    // New DTO for full graph
+    private static class GraphDTO {
+        Collection<Node> nodes;
+        List<Relation> edges;
+        GraphDTO(Collection<Node> n, List<Relation> e) { this.nodes = n; this.edges = e; }
     }
 }

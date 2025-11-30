@@ -1,23 +1,32 @@
 package com.atlasdblite.commands;
 
 import com.atlasdblite.engine.GraphEngine;
+import com.atlasdblite.models.Node;
 
 public class UpdateNodeCommand extends AbstractCommand {
     @Override
     public String getName() { return "update-node"; }
 
     @Override
-    public String getDescription() { return "Updates a node property. Usage: update-node <id> <key> <value>"; }
+    public String getDescription() { return "Updates a node. Usage: update-node <search_term> <key> <value>"; }
 
     @Override
     public void execute(String[] args, GraphEngine engine) {
-        if (!validateArgs(args, 3, "update-node <id> <key> <value>")) return;
+        if (!validateArgs(args, 3, "update-node <search_term> <key> <value>")) return;
 
-        boolean success = engine.updateNode(args[1], args[2], args[3]);
+        String query = args[1];
+        String key = args[2];
+        String value = args[3];
+
+        // Use the new shared intelligence
+        Node target = resolveNode(query, engine);
+        if (target == null) return; // Cancelled or not found
+
+        boolean success = engine.updateNode(target.getId(), key, value);
         if (success) {
-            printSuccess("Node updated successfully.");
+            printSuccess("Updated Node [" + target.getId() + "]: set " + key + "=" + value);
         } else {
-            printError("Node ID not found: " + args[1]);
+            printError("Failed to update node.");
         }
     }
 }

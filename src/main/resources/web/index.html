@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AtlasDB-Lite Dashboard</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        #network {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(30, 30, 30, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+
+        h1 {
+            margin: 0 0 5px 0;
+            font-size: 18px;
+            color: #4CAF50;
+        }
+
+        p {
+            margin: 0;
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        #details-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            background: rgba(30, 30, 30, 0.95);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            transform: translateX(120%);
+            transition: transform 0.3s ease;
+        }
+
+        #details-panel.visible {
+            transform: translateX(0);
+        }
+
+        .prop-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 13px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 4px;
+        }
+
+        .prop-key {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        button {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: #4CAF50;
+            border: none;
+            padding: 10px 20px;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="network"></div>
+
+    <div class="overlay">
+        <h1>AtlasDB-Lite</h1>
+        <p>Live Graph Visualization</p>
+        <p id="status">Status: Connecting...</p>
+    </div>
+
+    <div id="details-panel">
+        <h2 id="node-id">Node ID</h2>
+        <p id="node-label" style="color: #4CAF50; margin-bottom: 15px;">Label</p>
+        <div id="node-props"></div>
+    </div>
+
+    <button onclick="fetchGraph()">↻ Refresh Data</button>
+
+    <script>
+        let network;
+        const nodes = new vis.DataSet([]);
+        const edges = new vis.DataSet([]);
+
+        function init() {
+            const container = document.getElementById('network');
+            const data = { nodes: nodes, edges: edges };
+            const options = {
+                nodes: {
+                    shape: 'dot',
+                    size: 15,
+                    font: { color: '#ffffff', size: 14, strokeWidth: 2, strokeColor: '#000' },
+                    borderWidth: 2,
+                    color: { background: '#2E2E2E', border: '#4CAF50', highlight: { background: '#4CAF50', border: '#FFF' } }
+                },
+                edges: {
+                    color: { color: '#666', highlight: '#4CAF50' },
+                    arrows: 'to',
+                    smooth: { type: 'cubicBezier' }
+                },
+                physics: {
+                    stabilization: false,
+                    barnesHut: { gravitationalConstant: -3000, springLength: 200 }
+                },
+                interaction: { hover: true, tooltipDelay: 200 }
+            };
+            network = new vis.Network(container, data, options);
+
+            network.on("click", function (params) {
+                if (params.nodes.length > 0) {
+                    showDetails(params.nodes[0]);
+                } else {
+                    document.getElementById('details-panel').classList.remove('visible');
+                }
+            });
+
+            fetchGraph();
+        }
+
+        async function fetchGraph() {
+            document.getElementById('status').innerText = "Status: Fetching...";
+            try {
+                const response = await fetch('/api/graph');
+                const graph = await response.json();
+
+                // Update DataSets
+                nodes.clear();
+                edges.clear();
+
+                const visNodes = graph.nodes.map(n => ({
+                    id: n.id,
+                    label: n.id + "\n(" + n.label + ")",
+                    title: JSON.stringify(n.properties, null, 2), // Tooltip
+                    data: n // Store full object for details panel
+                }));
+
+                const visEdges = graph.edges.map(e => ({
+                    from: e.sourceId,
+                    to: e.targetId,
+                    label: e.type,
+                    font: { align: 'middle', size: 10 }
+                }));
+
+                nodes.add(visNodes);
+                edges.add(visEdges);
+
+                document.getElementById('status').innerText = `Status: Online (${graph.nodes.length} nodes)`;
+            } catch (e) {
+                document.getElementById('status').innerText = "Status: Error";
+                console.error(e);
+            }
+        }
+
+        function showDetails(nodeId) {
+            const nodeData = nodes.get(nodeId).data;
+            document.getElementById('node-id').innerText = nodeData.id;
+            document.getElementById('node-label').innerText = nodeData.label;
+
+            const propsDiv = document.getElementById('node-props');
+            propsDiv.innerHTML = '';
+
+            for (const [key, value] of Object.entries(nodeData.properties)) {
+                propsDiv.innerHTML += `
+                    <div class="prop-row">
+                        <span class="prop-key">${key}</span>
+                        <span>${value}</span>
+                    </div>`;
+            }
+
+            document.getElementById('details-panel').classList.add('visible');
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

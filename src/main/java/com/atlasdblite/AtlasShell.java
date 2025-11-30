@@ -59,7 +59,6 @@ public class AtlasShell {
             } else {
                 System.out.println(" Unknown command. Type 'help'.");
             }
-            scanner.close();
         }
     }
 
