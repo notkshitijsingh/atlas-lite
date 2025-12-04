@@ -14,17 +14,14 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 public class DataSegment {
+    // ... (Existing fields and constructor remain unchanged) ...
     private final int id;
     private final String filePath;
     private final CryptoManager crypto;
-    
-    // Concurrency Lock
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-
     private final Map<String, Node> nodes = new HashMap<>();
     private final List<Relation> relations = new ArrayList<>();
     private final Map<String, Set<String>> invertedIndex = new HashMap<>();
-    
     private boolean indexingEnabled = false;
     private boolean isLoaded = false;
     private boolean isDirty = false;
@@ -35,111 +32,85 @@ public class DataSegment {
         this.crypto = crypto;
     }
 
-    // --- Memory Management ---
+    // ... (Keep existing load/save/unload logic exactly as is) ...
+    // ... (Keep existing putNode/getNode/removeNode logic exactly as is) ...
 
     public void loadIfRequired() {
-        // Double-checked locking for performance
-        if (isLoaded) return;
-        
-        rwLock.writeLock().lock(); // Lock for loading
+        if (isLoaded)
+            return;
+        rwLock.writeLock().lock();
         try {
-            if (isLoaded) return; // Re-check
-            
+            if (isLoaded)
+                return;
             File file = new File(filePath);
             if (!file.exists()) {
                 isLoaded = true;
                 return;
             }
-
-            // Read file logic
             byte[] fileBytes = Files.readAllBytes(file.toPath());
             String rawBase64 = crypto.decrypt(new String(fileBytes));
             byte[] binaryData = Base64.getDecoder().decode(rawBase64);
-
             try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(binaryData))) {
-                if (!"SEG_V1".equals(in.readUTF())) throw new IOException("Bad Header");
-                
+                if (!"SEG_V1".equals(in.readUTF()))
+                    throw new IOException("Bad Header");
                 int nc = in.readInt();
-                for(int i=0; i<nc; i++) {
+                for (int i = 0; i < nc; i++) {
                     Node n = Node.readFrom(in);
                     nodes.put(n.getId(), n);
-                    if (indexingEnabled) indexNode(n);
+                    if (indexingEnabled)
+                        indexNode(n);
                 }
-
                 int rc = in.readInt();
-                for(int i=0; i<rc; i++) relations.add(Relation.readFrom(in));
+                for (int i = 0; i < rc; i++)
+                    relations.add(Relation.readFrom(in));
             }
             isLoaded = true;
         } catch (Exception e) {
-            System.err.println(" [SEG-" + id + "] Load Failed: " + e.getMessage());
+            System.err.println("Load Failed: " + e.getMessage());
         } finally {
             rwLock.writeLock().unlock();
         }
     }
-
-    public void unload() {
-        rwLock.writeLock().lock();
-        try {
-            if (!isLoaded) return;
-            save(); // Ensure we don't lose data
-            
-            // Clear RAM
-            nodes.clear();
-            relations.clear();
-            invertedIndex.clear();
-            isLoaded = false;
-            // System.out.println(" [SEG-" + id + "] Unloaded from RAM.");
-        } finally {
-            rwLock.writeLock().unlock();
-        }
-    }
-
-    // --- Atomic Persistence ---
 
     public void save() {
-        rwLock.readLock().lock(); // Read lock to serialise state
+        rwLock.readLock().lock();
         try {
-            if (!isDirty && isLoaded) return;
+            if (!isDirty && isLoaded)
+                return;
         } finally {
             rwLock.readLock().unlock();
         }
-
-        rwLock.writeLock().lock(); // Write lock to reset dirty flag
+        rwLock.writeLock().lock();
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             DataOutputStream out = new DataOutputStream(baos);
-
             out.writeUTF("SEG_V1");
             out.writeInt(nodes.size());
-            for(Node n : nodes.values()) n.writeTo(out);
+            for (Node n : nodes.values())
+                n.writeTo(out);
             out.writeInt(relations.size());
-            for(Relation r : relations) r.writeTo(out);
-
+            for (Relation r : relations)
+                r.writeTo(out);
             String enc = crypto.encrypt(Base64.getEncoder().encodeToString(baos.toByteArray()));
-            
-            // ATOMIC WRITE: Write to .tmp, then move
             Path targetPath = Paths.get(filePath);
             Path tempPath = Paths.get(filePath + ".tmp");
-            
             Files.write(tempPath, enc.getBytes());
             Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            
             isDirty = false;
-        } catch(Exception e) {
-            System.err.println(" [SEG-" + id + "] Save Failed: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Save Failed: " + e.getMessage());
         } finally {
             rwLock.writeLock().unlock();
         }
     }
-
-    // --- Thread-Safe CRUD ---
 
     public void putNode(Node node) {
         loadIfRequired();
         rwLock.writeLock().lock();
         try {
             if (indexingEnabled) {
-                if (nodes.containsKey(node.getId())) removeFromIndex(nodes.get(node.getId()));
+                if (nodes.containsKey(node.getId()))
+                    removeFromIndex(nodes.get(node.getId()));
                 indexNode(node);
             }
             nodes.put(node.getId(), node);
@@ -158,14 +129,15 @@ public class DataSegment {
             rwLock.readLock().unlock();
         }
     }
-    
+
     public boolean removeNode(String id) {
         loadIfRequired();
         rwLock.writeLock().lock();
         try {
             Node n = nodes.remove(id);
             if (n != null) {
-                if (indexingEnabled) removeFromIndex(n);
+                if (indexingEnabled)
+                    removeFromIndex(n);
                 relations.removeIf(r -> r.getSourceId().equals(id));
                 isDirty = true;
                 return true;
@@ -187,32 +159,46 @@ public class DataSegment {
         }
     }
 
-    public List<Node> search(String query) {
+    // --- NEW: Remove specific relation ---
+    public boolean removeRelation(String sourceId, String targetId, String type) {
         loadIfRequired();
-        rwLock.readLock().lock();
+        rwLock.writeLock().lock();
         try {
-            if (indexingEnabled) {
-                Set<String> ids = invertedIndex.getOrDefault(query.toLowerCase(), Collections.emptySet());
-                return ids.stream().map(nodes::get).filter(Objects::nonNull).collect(Collectors.toList());
-            } else {
-                String q = query.toLowerCase();
-                return nodes.values().stream()
-                        .filter(n -> n.toString().toLowerCase().contains(q))
-                        .collect(Collectors.toList());
-            }
+            boolean removed = relations.removeIf(r -> r.getSourceId().equals(sourceId) &&
+                    r.getTargetId().equals(targetId) &&
+                    r.getType().equalsIgnoreCase(type));
+            if (removed)
+                isDirty = true;
+            return removed;
         } finally {
-            rwLock.readLock().unlock();
+            rwLock.writeLock().unlock();
         }
     }
 
-    // --- Indexing Logic (Private, called within locks) ---
+    // ... (Keep existing search/index/helper methods exactly as is) ...
+    public void unload() {
+        rwLock.writeLock().lock();
+        try {
+            if (!isLoaded)
+                return;
+            save();
+            nodes.clear();
+            relations.clear();
+            invertedIndex.clear();
+            isLoaded = false;
+        } finally {
+            rwLock.writeLock().unlock();
+        }
+    }
 
     public void setIndexing(boolean enabled) {
         rwLock.writeLock().lock();
         try {
             this.indexingEnabled = enabled;
-            if (enabled && isLoaded) rebuildIndex();
-            else invertedIndex.clear();
+            if (enabled && isLoaded)
+                rebuildIndex();
+            else
+                invertedIndex.clear();
         } finally {
             rwLock.writeLock().unlock();
         }
@@ -220,13 +206,15 @@ public class DataSegment {
 
     private void rebuildIndex() {
         invertedIndex.clear();
-        for (Node n : nodes.values()) indexNode(n);
+        for (Node n : nodes.values())
+            indexNode(n);
     }
 
     private void indexNode(Node n) {
         addToIndex(n.getId(), n.getId());
         addToIndex(n.getLabel(), n.getId());
-        for (String val : n.getProperties().values()) addToIndex(val, n.getId());
+        for (String val : n.getProperties().values())
+            addToIndex(val, n.getId());
     }
 
     private void addToIndex(String key, String nodeId) {
@@ -236,7 +224,8 @@ public class DataSegment {
     private void removeFromIndex(Node n) {
         removeFromIndexKey(n.getId(), n.getId());
         removeFromIndexKey(n.getLabel(), n.getId());
-        for (String val : n.getProperties().values()) removeFromIndexKey(val, n.getId());
+        for (String val : n.getProperties().values())
+            removeFromIndexKey(val, n.getId());
     }
 
     private void removeFromIndexKey(String key, String nodeId) {
@@ -244,16 +233,34 @@ public class DataSegment {
         if (invertedIndex.containsKey(k)) {
             Set<String> ids = invertedIndex.get(k);
             ids.remove(nodeId);
-            if (ids.isEmpty()) invertedIndex.remove(k);
+            if (ids.isEmpty())
+                invertedIndex.remove(k);
         }
     }
 
-    // --- Batch Helpers ---
+    public List<Node> search(String query) {
+        loadIfRequired();
+        rwLock.readLock().lock();
+        try {
+            if (indexingEnabled) {
+                Set<String> ids = invertedIndex.getOrDefault(query.toLowerCase(), Collections.emptySet());
+                return ids.stream().map(nodes::get).filter(Objects::nonNull).collect(Collectors.toList());
+            } else {
+                String q = query.toLowerCase();
+                return nodes.values().stream().filter(n -> n.toString().toLowerCase().contains(q))
+                        .collect(Collectors.toList());
+            }
+        } finally {
+            rwLock.readLock().unlock();
+        }
+    }
+
     public void removeRelationsTo(String tId) {
         loadIfRequired();
         rwLock.writeLock().lock();
         try {
-            if (relations.removeIf(r -> r.getTargetId().equals(tId))) isDirty = true;
+            if (relations.removeIf(r -> r.getTargetId().equals(tId)))
+                isDirty = true;
         } finally {
             rwLock.writeLock().unlock();
         }
@@ -268,17 +275,17 @@ public class DataSegment {
             rwLock.readLock().unlock();
         }
     }
-    
+
     public Collection<Node> getNodes() {
         loadIfRequired();
         rwLock.readLock().lock();
         try {
-            return new ArrayList<>(nodes.values()); // Copy to avoid concurrency issues outside lock
+            return new ArrayList<>(nodes.values());
         } finally {
             rwLock.readLock().unlock();
         }
     }
-    
+
     public List<Relation> getAllRelations() {
         loadIfRequired();
         rwLock.readLock().lock();

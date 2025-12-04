@@ -15,16 +15,19 @@ public class AtlasShell {
         registry.register(new UpdateNodeCommand());
         registry.register(new DeleteNodeCommand());
         registry.register(new LinkCommand());
+        registry.register(new DeleteLinkCommand());
+        registry.register(new UpdateLinkCommand());
+        
         registry.register(new ShowCommand());
         registry.register(new QueryCommand());
         registry.register(new SearchCommand());
+        registry.register(new PathCommand()); // NEW: Pathfinding
+        
         registry.register(new StatsCommand());
         registry.register(new BackupCommand());
         registry.register(new ExportCommand());
         registry.register(new NukeCommand());
         registry.register(new ServerCommand());
-        
-        // NEW COMMANDS
         registry.register(new IndexCommand());
         registry.register(new ExitCommand());
 
@@ -36,16 +39,7 @@ public class AtlasShell {
             String input = scanner.nextLine().trim();
 
             if (input.isEmpty()) continue;
-
-            // Explicit help check restored
-            if (input.equalsIgnoreCase("help")) {
-                registry.printHelp();
-                continue;
-            }
-            
-            // Note: ExitCommand now handles "exit" logic, but we keep this check 
-            // to allow 'exit' typed directly to find the command in the registry
-            // or just break if not using execute() path.
+            if (input.equalsIgnoreCase("help")) { registry.printHelp(); continue; }
             
             String[] tokens = input.split("\\s+");
             Command cmd = registry.get(tokens[0]);
@@ -68,6 +62,7 @@ public class AtlasShell {
         System.out.println("  / _ \\| __| |/ _` / __|| | | |  _ \\ ");
         System.out.println(" / ___ \\ |_| | (_| \\__ \\| |_| | |_) |");
         System.out.println("/_/   \\_\\__|_|\\__,_|___/|____/|____/ ");
-        System.out.println("      SCALABLE SHELL v3.0 | SHARDED  ");
+        System.out.println("      ATLASDB-LITE v3.2      ");
+        System.out.println("   Sharded | Encrypted | 'help' for commands ");
     }
 }
