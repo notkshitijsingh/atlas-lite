@@ -1,120 +1,97 @@
-# AtlasDB-Lite
 
-**AtlasDB-Lite** is a lightweight, serverless, and encrypted Knowledge Graph engine written in pure Java.
+# AtlasDB-Lite v3.4
 
-Designed for restricted environments where deploying full-scale database servers (like Neo4j or SQL) is not feasible, AtlasDB-Lite runs entirely in user-space. It manages complex node-relationship data in memory while ensuring data at rest is secured with military-grade AES-256 encryption.
+AtlasDB-Lite is a **scalable, serverless, and encrypted Knowledge Graph engine** written in pure Java.  
+It is designed for **embedded environments** where you need Graph capabilities (Relationships, Pathfinding) without the overhead of Docker containers or heavy database servers.
+
+---
 
 ## 🚀 Key Features
 
-* **Zero-Install Architecture:** Runs on any machine with a JVM. No Docker, Admin rights, or background services required.
-* **Secure by Default:** All data is persisted to disk (`atlas_data.enc`) using **AES-256 encryption**.
-* **Interactive Shell:** Includes a robust UNIX-style CLI (`AtlasShell`) for managing data.
-* **Fuzzy Search:** Built-in search engine to find nodes by property values.
-* **GraphViz Export:** Native support for exporting graph structures to `.dot` format for visualization.
-* **Disaster Recovery:** Hot-backup command creates timestamped snapshots of your encrypted database.
+- **Sharded Architecture:**  
+  Data is split across **16 encrypted buckets (Shards)**, allowing databases larger than available RAM via LRU caching.
 
-## 🛠️ Technical Architecture
+- **Smart CLI:**  
+  UNIX-style shell with fuzzy search, interactive resolution, and auto-ID generation.
 
-AtlasDB-Lite uses a manual Maven directory structure to maintain a minimal footprint.
+- **AQL (Atlas Query Language):**  
+  SQL-like filtering (e.g., `select User where age > 21`).
 
-* **Engine:** In-Memory Graph (Adjacency List + HashMap Indexing).
-* **Persistence:** JSON serialization via Google Gson, wrapped in a custom `CryptoManager` layer.
-* **Security:** `javax.crypto` (AES/ECB/PKCS5Padding).
-* **Interface:** Command Pattern based REPL (Read-Eval-Print Loop).
+- **Visual Dashboard:**  
+  Built-in web server provides an interactive physics-based graph visualization.
+
+- **Secure:**  
+  All data at rest is encrypted with **AES-256**.
+
+- **Crash Safe:**  
+  Atomic writes ensure no data corruption on power loss.
+
+---
 
 ## 📦 Getting Started
 
-### Prerequisites
-* Java JDK 17 or higher
-* Maven 3.6+
+### **Prerequisites**
+- Java JDK 17 or higher
+- Maven 3.6+
 
-### Installation
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/notkshitijsingh/atlas-lite.git
-    cd atlasdb-lite
-    ```
-
-2.  **Build the Project:**
-    ```bash
-    mvn clean compile
-    ```
-
-3.  **Launch the Secure Shell:**
-    ```bash
-    mvn exec:java
-    ```
-
-## 💻 Usage Guide
-
-Once inside the `atlas-secure>` shell, you can interact with your graph immediately.
-
-### 1. Creating Data
-Create entities (Nodes) with dynamic properties.
+### **Installation**
 ```bash
-atlas-secure> add-node u-101 User name:Alice role:DevOps location:NY
-atlas-secure> add-node s-500 Server ip:192.168.1.5 os:Ubuntu
+# Clone & Build
+git clone https://github.com/notkshitijsingh/atlasdb-lite.git
+cd atlasdb-lite
+mvn clean compile
+
+# Launch the Shell
+mvn exec:java
 ```
-### 2. Linking Entities
-Define relationships between nodes.
-
-```Bash
-atlas-secure> link u-101 s-500 MANAGES
-atlas-secure> link s-500 u-101 ALERTS
-```
-### 3. Querying & Search
-Traverse the graph or search text.
-```Bash
-
-# Find what Alice manages
-atlas-secure> query u-101 MANAGES
-
-# Find any node containing "Ubuntu"
-atlas-secure> search Ubuntu
-```
-
-### 4. Administration
-Manage the health and security of your data.
-
-```Bash
-
-# View database stats and encryption status
-atlas-secure> stats
-
-# Create a secure snapshot
-atlas-secure> backup
-
-# Export for visualization (Paste content into WebGraphviz)
-atlas-secure> export graph_visual.dot
-```
-For a full list of commands, type help inside the shell or refer to Command Manual.
-
-## 🔐 Security Information
-Upon the first run, AtlasDB-Lite generates a unique key file: atlas.key.
-
-**⚠️ CRITICAL WARNING:** This key is required to decrypt your atlas_data.enc file.
-
-- Do not lose this key. If lost, your data is unrecoverable.
-
-- Do not share this key. Anyone with the key and the data file can decrypt your graph.
-
-## 🤝 Contributing
-1. Fork the Project
-
-2. Create your Feature Branch (git checkout -b feature/AmazingFeature)
-
-3. Commit your Changes (git commit -m 'Add some AmazingFeature')
-
-4. Push to the Branch (git push origin feature/AmazingFeature)
-
-5. Open a Pull Request
-
-## 👷‍♂️ Work in Progress
-1. Fixing Concurrency (The "Race Condition" Issue)
-
-2. Fixing Durability and Write Speed
-
-3. ~~Increasing Scalability (currently limited by RAM size)~~
 ---
-<p align='center'>Made with ❤️ by <a href='https://www.github.com/notkshitijsingh'>notkshitijsingh</a></p>
+## 💻 Usage Examples
+### 1. Creating Data (Smart Syntax)
+You can provide an explicit ID or let Atlas generate one.
+```bash
+# Explicit ID
+atlas-sharded> add-node u1 User name:Alice role:Admin
+
+# Auto-Generated ID
+atlas-sharded> add-node Server ip:10.0.0.1 os:Linux
+```
+
+### 2. Linking & Pathfinding
+Connect nodes and find connections using natural names.
+```bash
+
+# Connect Alice to the Server
+atlas-sharded> link Alice Server MANAGES
+
+# Find how Alice reaches the backup system
+atlas-sharded> path Alice "Backup Disk"
+```
+
+### 3. Advanced Querying (AQL)
+Filter data using Logical Operators
+```bash
+atlas-sharded> select User where role = Admin
+atlas-sharded> select Server where ip contains 192.168
+```
+
+### 4. Visual Dashboard 
+Visualize your graph in the browser.
+```bash
+
+# Start the server
+atlas-sharded> server start 8080
+
+# Open in browser
+http://localhost:8080
+```
+---
+## 🔐 Security
+
+On first run, AtlasDB-Lite generates atlas.key.
+
+This key is required to decrypt the atlas_db/ folder.
+
+**Do not lose this key.**
+
+---
+<p align='center'>Made with ❤️ by <a href='https://github.com/notkshitijsingh/'>notkshitijsingh</a></p>
