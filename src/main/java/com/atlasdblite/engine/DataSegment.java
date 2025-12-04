@@ -14,7 +14,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 public class DataSegment {
-    // ... (Existing fields and constructor remain unchanged) ...
     private final int id;
     private final String filePath;
     private final CryptoManager crypto;
@@ -31,9 +30,6 @@ public class DataSegment {
         this.filePath = rootDir + File.separator + "part_" + id + ".dat";
         this.crypto = crypto;
     }
-
-    // ... (Keep existing load/save/unload logic exactly as is) ...
-    // ... (Keep existing putNode/getNode/removeNode logic exactly as is) ...
 
     public void loadIfRequired() {
         if (isLoaded)
@@ -159,7 +155,6 @@ public class DataSegment {
         }
     }
 
-    // --- NEW: Remove specific relation ---
     public boolean removeRelation(String sourceId, String targetId, String type) {
         loadIfRequired();
         rwLock.writeLock().lock();
@@ -175,7 +170,6 @@ public class DataSegment {
         }
     }
 
-    // ... (Keep existing search/index/helper methods exactly as is) ...
     public void unload() {
         rwLock.writeLock().lock();
         try {

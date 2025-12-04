@@ -34,7 +34,6 @@ public class SearchCommand extends AbstractCommand {
         if (node.getId().toLowerCase().contains(query)) return true;
         if (node.getLabel().toLowerCase().contains(query)) return true;
         
-        // Check all properties
         return node.getProperties().values().stream()
                 .anyMatch(val -> val.toLowerCase().contains(query));
     }

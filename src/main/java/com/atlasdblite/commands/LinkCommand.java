@@ -14,7 +14,6 @@ public class LinkCommand extends AbstractCommand {
     public void execute(String[] args, GraphEngine engine) {
         if (!validateArgs(args, 3, "link <from_search> <to_search> <type>")) return;
 
-        // Use inherited resolveNode()
         System.out.println(" ... Resolving Source: '" + args[1] + "'");
         Node sourceNode = resolveNode(args[1], engine);
         if (sourceNode == null) return; 

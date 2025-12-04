@@ -4,7 +4,7 @@ import com.atlasdblite.engine.GraphEngine;
 import com.atlasdblite.server.APIServer;
 
 public class ServerCommand extends AbstractCommand {
-    private static APIServer serverInstance; // Singleton for the shell
+    private static APIServer serverInstance; 
 
     @Override
     public String getName() { return "server"; }
@@ -26,7 +26,7 @@ public class ServerCommand extends AbstractCommand {
                 printError("Server is already running.");
                 return;
             }
-            int port = 8080; // Default
+            int port = 8080; 
             if (args.length > 2) {
                 try {
                     port = Integer.parseInt(args[2]);

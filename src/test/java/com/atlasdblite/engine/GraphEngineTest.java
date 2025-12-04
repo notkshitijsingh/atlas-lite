@@ -41,12 +41,10 @@ public class GraphEngineTest {
 
     @Test
     public void testShardingPersists() {
-        // Add nodes that likely hash to different buckets
         for(int i=0; i<50; i++) {
             engine.persistNode(new Node("node_"+i, "Test"));
         }
         
-        // Reload Engine
         GraphEngine reloaded = new GraphEngine(TEST_DB_DIR);
         Assert.assertEquals(reloaded.getAllNodes().size(), 50);
         Assert.assertNotNull(reloaded.getNode("node_0"));
@@ -55,16 +53,12 @@ public class GraphEngineTest {
 
     @Test
     public void testCrossShardTraversal() {
-        // 1. Create Source in one bucket
         engine.persistNode(new Node("src", "Source"));
         
-        // 2. Create Target in another bucket
         engine.persistNode(new Node("tgt", "Target"));
         
-        // 3. Link
         engine.persistRelation("src", "tgt", "JUMP");
         
-        // 4. Traverse
         List<Node> results = engine.traverse("src", "JUMP");
         Assert.assertEquals(results.size(), 1);
         Assert.assertEquals(results.get(0).getId(), "tgt");
@@ -73,16 +67,13 @@ public class GraphEngineTest {
     @Test
     public void testCascadeDeleteAcrossShards() {
         engine.persistNode(new Node("A", "Root"));
-        engine.persistNode(new Node("B", "Child")); // Likely different bucket
+        engine.persistNode(new Node("B", "Child")); 
         engine.persistRelation("A", "B", "PARENT_OF");
         
-        // Delete A
         engine.deleteNode("A");
         
-        // Check B is still there
         Assert.assertNotNull(engine.getNode("B"));
         
-        // Check Relation is gone (A is gone, so traversing A -> B is impossible)
         Assert.assertTrue(engine.traverse("A", "PARENT_OF").isEmpty());
     }
 }

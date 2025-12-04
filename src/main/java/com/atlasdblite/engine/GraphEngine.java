@@ -34,7 +34,6 @@ public class GraphEngine {
         }
     }
 
-    // --- Core Routing ---
     private DataSegment getSegment(String id) {
         int segId = Math.abs(id.hashCode()) % BUCKET_COUNT;
         touchSegment(segId);
@@ -51,21 +50,18 @@ public class GraphEngine {
         }
     }
 
-    // --- NEW: Shortest Path Algorithm (BFS) ---
     public List<String> findShortestPath(String startId, String endId, int maxDepth) {
         if (getNode(startId) == null || getNode(endId) == null)
             return Collections.emptyList();
         if (startId.equals(endId))
             return Collections.singletonList(startId);
 
-        // Queue for BFS: Stores current Node ID
         Queue<String> queue = new LinkedList<>();
         queue.add(startId);
 
-        // Visited Set & Parent Map (to reconstruct path)
         Set<String> visited = new HashSet<>();
         visited.add(startId);
-        Map<String, String> parentMap = new HashMap<>(); // Child -> Parent
+        Map<String, String> parentMap = new HashMap<>(); 
 
         int currentDepth = 0;
 
@@ -73,7 +69,6 @@ public class GraphEngine {
             if (currentDepth++ > maxDepth)
                 break;
 
-            // Process level by level
             int levelSize = queue.size();
             for (int i = 0; i < levelSize; i++) {
                 String current = queue.poll();
@@ -83,8 +78,6 @@ public class GraphEngine {
                 if (current.equals(endId))
                     return reconstructPath(parentMap, endId);
 
-                // Get neighbors (Outgoing relations)
-                // Note: In sharded graph, this might cause segment swapping
                 DataSegment seg = getSegment(current);
                 List<Relation> outLinks = seg.getRelationsFrom(current);
 
@@ -92,17 +85,16 @@ public class GraphEngine {
                     String neighbor = r.getTargetId();
                     if (!visited.contains(neighbor)) {
                         visited.add(neighbor);
-                        parentMap.put(neighbor, current); // Record path
+                        parentMap.put(neighbor, current); 
                         queue.add(neighbor);
 
-                        // Optimization: Check immediately before adding to next level
                         if (neighbor.equals(endId))
                             return reconstructPath(parentMap, endId);
                     }
                 }
             }
         }
-        return Collections.emptyList(); // No path found
+        return Collections.emptyList(); 
     }
 
     private List<String> reconstructPath(Map<String, String> parentMap, String endId) {
@@ -115,7 +107,6 @@ public class GraphEngine {
         return path;
     }
 
-    // --- CRUD Delegates ---
     public void persistNode(Node node) {
         getSegment(node.getId()).putNode(node);
         commit();
@@ -170,7 +161,6 @@ public class GraphEngine {
         return false;
     }
 
-    // --- Read/Query ---
     public Node getNode(String id) {
         return getSegment(id).getNode(id);
     }
@@ -210,7 +200,6 @@ public class GraphEngine {
         return all;
     }
 
-    // --- Admin ---
     public void setAutoIndexing(boolean enabled) {
         this.autoIndexing = enabled;
         for (DataSegment seg : segments)

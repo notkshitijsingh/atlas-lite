@@ -18,9 +18,8 @@ public class UpdateNodeCommand extends AbstractCommand {
         String key = args[2];
         String value = args[3];
 
-        // Use the new shared intelligence
         Node target = resolveNode(query, engine);
-        if (target == null) return; // Cancelled or not found
+        if (target == null) return; 
 
         boolean success = engine.updateNode(target.getId(), key, value);
         if (success) {

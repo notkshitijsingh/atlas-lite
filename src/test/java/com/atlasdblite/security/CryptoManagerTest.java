@@ -12,7 +12,6 @@ public class CryptoManagerTest {
 
     @BeforeClass
     public void setup() {
-        // Ensure we start with a fresh instance
         crypto = new CryptoManager();
     }
 

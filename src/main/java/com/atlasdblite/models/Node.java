@@ -12,22 +12,18 @@ public class Node {
     private final Map<String, String> properties;
 
     public Node(String id, String label) {
-        // String.intern() saves RAM by reusing the string instance for identical labels
         this.id = id;
         this.label = label.intern(); 
         this.properties = new HashMap<>();
     }
 
     public void addProperty(String key, String value) {
-        // Intern keys as they are often repeated (e.g., "name", "age")
         this.properties.put(key.intern(), value);
     }
 
     public String getId() { return id; }
     public String getLabel() { return label; }
     public Map<String, String> getProperties() { return properties; }
-
-    // --- Binary Serialization Logic ---
 
     public void writeTo(DataOutputStream out) throws IOException {
         out.writeUTF(id);

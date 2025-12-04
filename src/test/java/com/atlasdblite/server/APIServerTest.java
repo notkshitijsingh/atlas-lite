@@ -34,10 +34,10 @@ public class APIServerTest {
 
     @BeforeClass
     public void setup() throws IOException {
-        cleanTestDir(); // Start fresh
+        cleanTestDir(); 
 
         engine = new GraphEngine(TEST_DB_DIR);
-        engine.setAutoIndexing(true); // Enable Indexing for tests
+        engine.setAutoIndexing(true); 
         
         server = new APIServer(engine);
         server.start(TEST_PORT);
@@ -89,8 +89,6 @@ public class APIServerTest {
 
     @Test(priority = 3)
     public void testIndexedSearch() throws Exception {
-        // Since AutoIndexing is ON, this search should hit the cache
-        // Create another node to ensure specific search works
         String json = "{\"id\":\"u101\", \"label\":\"User\", \"props\":{\"role\":\"Guest\"}}";
         client.send(
             HttpRequest.newBuilder()
@@ -100,7 +98,6 @@ public class APIServerTest {
             HttpResponse.BodyHandlers.ofString()
         );
 
-        // Search for 'Admin' (Should find u100 only)
         HttpResponse<String> res = client.send(
             HttpRequest.newBuilder().uri(URI.create(BASE_URL + "/api/search?q=Admin")).GET().build(),
             HttpResponse.BodyHandlers.ofString()

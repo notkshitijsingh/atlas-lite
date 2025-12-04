@@ -24,25 +24,19 @@ public class AddNodeCommand extends AbstractCommand {
         String label;
         int propStartIndex;
 
-        // SMART DETECTION LOGIC
-        // Case A: User typed "add-node Person name:Arnav" (Skipped ID)
-        // We detect this because the 3rd word (index 2) contains ':' OR we only have 2 args
         boolean isAutoId = false;
         
         if (args.length == 2) {
-            // "add-node Person" -> Auto ID
             isAutoId = true;
         } else if (args.length > 2 && args[2].contains(":")) {
-            // "add-node Person name:Arnav" -> args[2] is a property, so args[1] must be Label
             isAutoId = true;
         }
 
         if (isAutoId) {
-            id = UUID.randomUUID().toString().substring(0, 8); // Short UUID
+            id = UUID.randomUUID().toString().substring(0, 8); 
             label = args[1];
-            propStartIndex = 2; // Properties start immediately after label
+            propStartIndex = 2; 
         } else {
-            // Case B: User typed "add-node u1 Person name:Arnav" (Explicit ID)
             id = args[1];
             label = args[2];
             propStartIndex = 3;
@@ -50,7 +44,6 @@ public class AddNodeCommand extends AbstractCommand {
 
         Node node = new Node(id, label);
 
-        // Parse properties
         for (int i = propStartIndex; i < args.length; i++) {
             String[] prop = args[i].split(":");
             if (prop.length == 2) {

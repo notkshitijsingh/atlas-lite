@@ -19,7 +19,7 @@ public class AtlasShell {
         registry.register(new UpdateLinkCommand());
         
         registry.register(new ShowCommand());
-        registry.register(new SelectCommand()); // NEW: AQL Query Engine
+        registry.register(new SelectCommand()); 
         registry.register(new QueryCommand());
         registry.register(new SearchCommand());
         registry.register(new PathCommand()); 

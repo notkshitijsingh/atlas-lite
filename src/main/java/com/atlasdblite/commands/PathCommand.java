@@ -16,7 +16,6 @@ public class PathCommand extends AbstractCommand {
     public void execute(String[] args, GraphEngine engine) {
         if (!validateArgs(args, 2, "path <from_search> <to_search>")) return;
 
-        // Smart Resolve
         System.out.println(" ... Resolving Start Node: '" + args[1] + "'");
         Node start = resolveNode(args[1], engine);
         if (start == null) return;
@@ -38,7 +37,6 @@ public class PathCommand extends AbstractCommand {
                 String id = path.get(i);
                 Node n = engine.getNode(id);
                 
-                // n.toString() now includes properties based on your Node model update
                 String display = (n != null) ? n.toString() : "[ID: " + id + " (Missing)]";
                 
                 if (i == 0) {

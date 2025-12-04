@@ -12,14 +12,12 @@ public class Relation {
     public Relation(String sourceId, String targetId, String type) {
         this.sourceId = sourceId;
         this.targetId = targetId;
-        this.type = type.intern(); // Intern relationship types (e.g. "KNOWS" stored once)
+        this.type = type.intern(); 
     }
 
     public String getSourceId() { return sourceId; }
     public String getTargetId() { return targetId; }
     public String getType() { return type; }
-
-    // --- Binary Serialization Logic ---
 
     public void writeTo(DataOutputStream out) throws IOException {
         out.writeUTF(sourceId);
