@@ -2,6 +2,7 @@ package com.atlasdblite.commands;
 
 import com.atlasdblite.engine.GraphEngine;
 import com.atlasdblite.models.Node;
+import com.atlasdblite.models.Relation;
 
 import java.util.List;
 
@@ -32,12 +33,8 @@ public class PathCommand extends AbstractCommand {
         // Weighted Path Logic
         if (args.length > 3) {
             String weightKey = args[3];
-            boolean findLowest = true; // Default to Min Cost
-            
-            // Check for optional "max" flag
-            if (args.length > 4 && "max".equalsIgnoreCase(args[4])) {
-                findLowest = false;
-            }
+            boolean findLowest = true;
+            if (args.length > 4 && "max".equalsIgnoreCase(args[4])) findLowest = false;
 
             mode = (findLowest ? "Lowest" : "Highest") + " Cost (Weighted by '" + weightKey + "')";
             System.out.println(" ... Calculating " + mode + "...");
@@ -50,7 +47,7 @@ public class PathCommand extends AbstractCommand {
                 path = java.util.Collections.emptyList();
             }
         } 
-        // BFS Logic (Default if no weight provided)
+        // BFS Logic
         else {
             mode = "BFS (Fewest Hops)";
             System.out.println(" ... Calculating " + mode + "...");
@@ -73,8 +70,19 @@ public class PathCommand extends AbstractCommand {
                 if (i == 0) {
                     System.out.println("   (START) " + display);
                 } else {
-                    System.out.println("      |    ");
-                    System.out.println("      v    ");
+                    // Look up connection to previous node
+                    String prevId = path.get(i-1);
+                    Relation r = engine.getRelation(prevId, id);
+                    String linkInfo = (r != null) ? r.getType() : "?";
+                    if (r != null && !r.getProperties().isEmpty()) {
+                        linkInfo += " " + r.getProperties();
+                    }
+
+                    System.out.println("      |");
+                    System.out.println("      +---[" + linkInfo + "]--->");
+                    System.out.println("      |");
+                    System.out.println("      v");
+                    
                     if (i == path.size() - 1) {
                         System.out.println("   (END)   " + display);
                     } else {

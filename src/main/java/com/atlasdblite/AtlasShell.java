@@ -26,6 +26,7 @@ public class AtlasShell {
         
         registry.register(new StatsCommand());
         registry.register(new BackupCommand());
+        registry.register(new ImportCommand()); // NEW: Import
         registry.register(new ExportCommand());
         registry.register(new NukeCommand());
         registry.register(new ServerCommand());
@@ -35,10 +36,8 @@ public class AtlasShell {
 
         Scanner scanner = new Scanner(System.in);
         
-        // Clear screen before banner
         System.out.print("\033[H\033[2J");
         System.out.flush();
-        
         printBanner();
 
         while (true) {

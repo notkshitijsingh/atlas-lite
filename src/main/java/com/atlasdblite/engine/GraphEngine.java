@@ -50,15 +50,23 @@ public class GraphEngine {
         }
     }
 
-    // --- UPDATED: Weighted Pathfinding (Supports Min or Max) ---
+    // --- NEW: Helper to find specific connection info ---
+    public Relation getRelation(String fromId, String toId) {
+        DataSegment seg = getSegment(fromId);
+        List<Relation> links = seg.getRelationsFrom(fromId);
+        for (Relation r : links) {
+            if (r.getTargetId().equals(toId))
+                return r;
+        }
+        return null;
+    }
+
+    // --- Pathfinding ---
 
     public PathResult findWeightedPath(String startId, String endId, String weightKey, boolean findLowest) {
         if (getNode(startId) == null || getNode(endId) == null)
             return null;
 
-        // Comparator logic:
-        // findLowest = true -> Sort Ascending (Smallest first) -> Min-Heap
-        // findLowest = false -> Sort Descending (Largest first) -> Max-Heap
         Comparator<PathNode> comparator = findLowest
                 ? Comparator.comparingDouble(n -> n.cost)
                 : (n1, n2) -> Double.compare(n2.cost, n1.cost);
@@ -70,19 +78,12 @@ public class GraphEngine {
         Map<String, String> parentMap = new HashMap<>();
         Set<String> visited = new HashSet<>();
 
-        // Initialize cost map
-        // If finding lowest, we want defaults to be Infinity (so any real path is
-        // smaller).
-        // If finding highest, we want defaults to be -Infinity (so any real path is
-        // larger).
         costMap.put(startId, 0.0);
 
         while (!pq.isEmpty()) {
             PathNode current = pq.poll();
             String currId = current.id;
 
-            // Optimization: If we found a path to endId, and because it's Dijkstra/Greedy,
-            // the first time we pull endId from PQ, it is the optimal path.
             if (currId.equals(endId)) {
                 return new PathResult(reconstructPath(parentMap, endId), current.cost);
             }
@@ -109,17 +110,10 @@ public class GraphEngine {
                 }
 
                 double newCost = costMap.get(currId) + weight;
-
-                // Default value for unexplored nodes depends on mode
                 double currentNeighborCost = costMap.getOrDefault(neighbor,
                         findLowest ? Double.MAX_VALUE : -Double.MAX_VALUE);
 
-                boolean improved;
-                if (findLowest) {
-                    improved = newCost < currentNeighborCost;
-                } else {
-                    improved = newCost > currentNeighborCost;
-                }
+                boolean improved = findLowest ? (newCost < currentNeighborCost) : (newCost > currentNeighborCost);
 
                 if (improved) {
                     costMap.put(neighbor, newCost);
@@ -151,7 +145,6 @@ public class GraphEngine {
         }
     }
 
-    // --- BFS (Unweighted) ---
     public List<String> findShortestPath(String startId, String endId, int maxDepth) {
         if (getNode(startId) == null || getNode(endId) == null)
             return Collections.emptyList();
@@ -204,7 +197,7 @@ public class GraphEngine {
         return path;
     }
 
-    // --- CRUD / Query Delegates (Keep exactly as before) ---
+    // --- CRUD / Query Delegates ---
     public void persistNode(Node node) {
         getSegment(node.getId()).putNode(node);
         commit();
