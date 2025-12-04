@@ -4,13 +4,26 @@ import com.atlasdblite.engine.GraphEngine;
 import com.atlasdblite.commands.*;
 import java.util.Scanner;
 
+/**
+ * The main entry point for the AtlasDB-Lite interactive shell.
+ * This class initializes the database engine, registers all available commands,
+ * and enters a read-eval-print loop (REPL) to process user input.
+ */
 public class AtlasShell {
+    /** The default directory where database files are stored. */
     private static final String DB_DIR = "atlas_db";
 
+    /**
+     * The main method that launches the shell.
+     *
+     * @param args Command-line arguments (not used).
+     */
     public static void main(String[] args) {
+        // Initialize the core graph engine with the specified database directory.
         GraphEngine engine = new GraphEngine(DB_DIR);
         CommandRegistry registry = new CommandRegistry();
 
+        // Register all available commands for the shell.
         registry.register(new AddNodeCommand());
         registry.register(new UpdateNodeCommand());
         registry.register(new DeleteNodeCommand());
@@ -19,7 +32,7 @@ public class AtlasShell {
         registry.register(new UpdateLinkCommand());
         
         registry.register(new ShowCommand());
-        registry.register(new SelectCommand()); // NEW: AQL Query Engine
+        registry.register(new SelectCommand()); 
         registry.register(new QueryCommand());
         registry.register(new SearchCommand());
         registry.register(new PathCommand()); 
@@ -35,20 +48,27 @@ public class AtlasShell {
         Scanner scanner = new Scanner(System.in);
         printBanner();
 
+        // Start the main Read-Eval-Print-Loop (REPL).
         while (true) {
             System.out.print("atlas-sharded> ");
             String input = scanner.nextLine().trim();
 
             if (input.isEmpty()) continue;
-            if (input.equalsIgnoreCase("help")) { registry.printHelp(); continue; }
+            if (input.equalsIgnoreCase("help")) { 
+                registry.printHelp(); 
+                continue; 
+            }
             
+            // Parse the input into command and arguments.
             String[] tokens = input.split("\\s+");
             Command cmd = registry.get(tokens[0]);
             
             if (cmd != null) {
                 try {
+                    // Execute the command.
                     cmd.execute(tokens, engine);
                 } catch (Exception e) {
+                    // Catch and display any errors that occur during command execution.
                     System.out.println(" [CRASH] " + e.getMessage());
                 }
             } else {
@@ -57,6 +77,9 @@ public class AtlasShell {
         }
     }
 
+    /**
+     * Prints the application banner and version information to the console.
+     */
     private static void printBanner() {
         System.out.println("    _   _   _            ____  ____  ");
         System.out.println("   / \\ | |_| | __ _ ___ |  _ \\| __ ) ");

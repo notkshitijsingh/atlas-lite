@@ -34,7 +34,6 @@ public class APIServer {
         server = HttpServer.create(new InetSocketAddress(port), 0);
         server.setExecutor(Executors.newCachedThreadPool());
 
-        // 1. Serve Dashboard (HTML)
         server.createContext("/", exchange -> {
             if (!exchange.getRequestURI().getPath().equals("/")) {
                 sendResponse(exchange, 404, "Not Found");
@@ -57,13 +56,11 @@ public class APIServer {
             }
         });
 
-        // 2. Full Graph Data for Visualization
         server.createContext("/api/graph", exchange -> {
             GraphDTO dto = new GraphDTO(engine.getAllNodes(), engine.getAllRelations());
             sendResponse(exchange, 200, gson.toJson(dto));
         });
 
-        // 3. Existing Endpoints
         server.createContext("/api/status", exchange -> 
             sendResponse(exchange, 200, "{\"status\":\"online\",\"engine\":\"AtlasDB-Lite\"}"));
 
@@ -100,7 +97,6 @@ public class APIServer {
             String query = exchange.getRequestURI().getQuery();
             if (query != null && query.startsWith("q=")) {
                 String term = query.split("=")[1].toLowerCase();
-                // Use engine search which handles index checking
                 List<Node> matches = engine.search(term);
                 sendResponse(exchange, 200, gson.toJson(matches));
             } else {
@@ -134,11 +130,9 @@ public class APIServer {
         return gson.fromJson(new InputStreamReader(exchange.getRequestBody()), clazz);
     }
 
-    // DTOs
     private static class NodeDTO { String id; String label; Map<String, String> props; }
     private static class LinkDTO { String from; String to; String type; }
     
-    // New DTO for full graph
     private static class GraphDTO {
         Collection<Node> nodes;
         List<Relation> edges;
