@@ -4,92 +4,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AtlasDB-Lite Dashboard</title>
+    <title>AtlasDB-Lite Visualizer</title>
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600&display=swap"
+        rel="stylesheet">
     <style>
+        :root {
+            --bg: #0f1115;
+            --panel: rgba(22, 27, 34, 0.95);
+            --text: #e6edf3;
+            --accent: #2f81f7;
+            --border: #30363d;
+        }
+
         body {
             margin: 0;
-            background-color: #121212;
-            color: #e0e0e0;
-            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
             overflow: hidden;
         }
 
+        /* Layout */
         #network {
             width: 100vw;
             height: 100vh;
+            cursor: crosshair;
         }
 
-        .overlay {
+        /* Floating HUD */
+        .hud {
             position: absolute;
+            padding: 16px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .top-left {
             top: 20px;
             left: 20px;
-            background: rgba(30, 30, 30, 0.9);
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
-            pointer-events: none;
+            width: 300px;
         }
 
+        .top-right {
+            top: 20px;
+            right: 20px;
+            width: 320px;
+            transform: translateX(120%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .top-right.visible {
+            transform: translateX(0);
+        }
+
+        /* Typography */
         h1 {
-            margin: 0 0 5px 0;
+            margin: 0 0 8px 0;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        h2 {
+            margin: 0 0 12px 0;
             font-size: 18px;
-            color: #4CAF50;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
         }
 
         p {
             margin: 0;
-            font-size: 12px;
-            color: #aaa;
-        }
-
-        #details-panel {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 300px;
-            background: rgba(30, 30, 30, 0.95);
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            transform: translateX(120%);
-            transition: transform 0.3s ease;
-        }
-
-        #details-panel.visible {
-            transform: translateX(0);
-        }
-
-        .prop-row {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 8px;
             font-size: 13px;
-            border-bottom: 1px solid #444;
-            padding-bottom: 4px;
+            color: #8b949e;
+            line-height: 1.5;
         }
 
-        .prop-key {
-            color: #4CAF50;
-            font-weight: bold;
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        input {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            width: 100%;
+            font-family: 'Inter', sans-serif;
+        }
+
+        input:focus {
+            outline: 2px solid var(--accent);
+            border-color: transparent;
         }
 
         button {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background: #4CAF50;
-            border: none;
-            padding: 10px 20px;
+            background: var(--accent);
             color: white;
-            border-radius: 4px;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
             cursor: pointer;
-            font-weight: bold;
+            transition: all 0.2s;
+            font-size: 13px;
         }
 
         button:hover {
-            background: #45a049;
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+
+        button.secondary {
+            background: #21262d;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        button.secondary:hover {
+            background: #30363d;
+        }
+
+        /* Properties Table */
+        .prop-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .prop-table td {
+            padding: 6px 0;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .prop-key {
+            color: #79c0ff;
+            width: 40%;
+            font-weight: 600;
+        }
+
+        .prop-val {
+            color: #d2a8ff;
+            word-break: break-all;
+        }
+
+        /* Legend */
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: #21262d;
+            border: 1px solid var(--border);
         }
     </style>
 </head>
@@ -97,54 +180,96 @@
 <body>
     <div id="network"></div>
 
-    <div class="overlay">
+    <!-- Left Control Panel -->
+    <div class="hud top-left">
         <h1>AtlasDB-Lite</h1>
-        <p>Live Graph Visualization</p>
-        <p id="status">Status: Connecting...</p>
+        <p id="stats-text">Waiting for data...</p>
+
+        <div class="controls" style="margin-top: 16px;">
+            <input type="text" id="search-box" placeholder="Find node by ID or Label..." onkeyup="handleSearch(event)">
+        </div>
+
+        <div class="controls">
+            <button onclick="fetchGraph()">↻ Reload</button>
+            <button class="secondary" onclick="fitGraph()">⛶ Fit</button>
+            <button class="secondary" onclick="togglePhysics()">⚛ Physics</button>
+        </div>
+
+        <div id="legend-container" class="legend"></div>
     </div>
 
-    <div id="details-panel">
-        <h2 id="node-id">Node ID</h2>
-        <p id="node-label" style="color: #4CAF50; margin-bottom: 15px;">Label</p>
-        <div id="node-props"></div>
+    <!-- Right Details Panel -->
+    <div id="details-panel" class="hud top-right">
+        <h2 id="node-title">Node Details</h2>
+        <table class="prop-table" id="prop-table">
+            <!-- Props go here -->
+        </table>
+        <div style="margin-top: 15px; text-align: right;">
+            <button class="secondary" onclick="closeDetails()">Close</button>
+        </div>
     </div>
-
-    <button onclick="fetchGraph()">↻ Refresh Data</button>
 
     <script>
         let network;
+        let physicsEnabled = true;
         const nodes = new vis.DataSet([]);
         const edges = new vis.DataSet([]);
+
+        // Color Palette for Auto-Coloring Labels
+        const colors = ['#2f81f7', '#d2a8ff', '#7ee787', '#ff7b72', '#f2cc60', '#a5d6ff', '#ffa657'];
+        // CHANGED: const -> let so we can reset it in fetchGraph()
+        let labelColorMap = {};
+
+        function getColorForLabel(label) {
+            if (!labelColorMap[label]) {
+                const color = colors[Object.keys(labelColorMap).length % colors.length];
+                labelColorMap[label] = color;
+                updateLegend();
+            }
+            return labelColorMap[label];
+        }
 
         function init() {
             const container = document.getElementById('network');
             const data = { nodes: nodes, edges: edges };
+
             const options = {
                 nodes: {
                     shape: 'dot',
-                    size: 15,
-                    font: { color: '#ffffff', size: 14, strokeWidth: 2, strokeColor: '#000' },
+                    font: { color: '#ffffff', face: 'Inter', size: 14, strokeWidth: 3, strokeColor: '#000' },
                     borderWidth: 2,
-                    color: { background: '#2E2E2E', border: '#4CAF50', highlight: { background: '#4CAF50', border: '#FFF' } }
+                    shadow: true
                 },
                 edges: {
-                    color: { color: '#666', highlight: '#4CAF50' },
-                    arrows: 'to',
-                    smooth: { type: 'cubicBezier' }
+                    color: { color: '#424a53', highlight: '#2f81f7' },
+                    arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+                    smooth: { type: 'continuous', roundness: 0.5 },
+                    font: { color: '#8b949e', size: 11, align: 'middle', background: '#0f1115' }
                 },
                 physics: {
                     stabilization: false,
-                    barnesHut: { gravitationalConstant: -3000, springLength: 200 }
+                    forceAtlas2Based: {
+                        gravitationalConstant: -100, // Repel force
+                        centralGravity: 0.005,
+                        springLength: 250,
+                        springConstant: 0.05,
+                        damping: 0.9
+                    },
+                    solver: 'forceAtlas2Based'
                 },
-                interaction: { hover: true, tooltipDelay: 200 }
+                interaction: { hover: true, tooltipDelay: 100, zoomView: true }
             };
+
             network = new vis.Network(container, data, options);
 
+            // Click Event
             network.on("click", function (params) {
                 if (params.nodes.length > 0) {
                     showDetails(params.nodes[0]);
+                } else if (params.edges.length > 0) {
+                    // Optional: Show edge details?
                 } else {
-                    document.getElementById('details-panel').classList.remove('visible');
+                    closeDetails();
                 }
             });
 
@@ -152,56 +277,122 @@
         }
 
         async function fetchGraph() {
-            document.getElementById('status').innerText = "Status: Fetching...";
+            const status = document.getElementById('stats-text');
+            status.innerText = "Fetching data...";
+
             try {
                 const response = await fetch('/api/graph');
                 const graph = await response.json();
 
-                // Update DataSets
                 nodes.clear();
                 edges.clear();
+                labelColorMap = {}; // Reset colors
 
-                const visNodes = graph.nodes.map(n => ({
-                    id: n.id,
-                    label: n.id + "\n(" + n.label + ")",
-                    title: JSON.stringify(n.properties, null, 2), // Tooltip
-                    data: n // Store full object for details panel
-                }));
+                // Process Nodes
+                const visNodes = graph.nodes.map(n => {
+                    const color = getColorForLabel(n.label);
+                    // Size based on rough degree connectivity logic (optional) or static
+                    return {
+                        id: n.id,
+                        label: n.label.length > 10 ? n.label.substring(0, 8) + '..' : n.label, // Short label on graph
+                        title: `ID: ${n.id}\nLabel: ${n.label}`, // Tooltip
+                        color: { background: '#161b22', border: color, highlight: { background: color, border: '#fff' } },
+                        size: 20 + (n.properties ? Object.keys(n.properties).length * 2 : 0), // Dynamic size
+                        data: n // Store full data
+                    };
+                });
 
+                // Process Edges
                 const visEdges = graph.edges.map(e => ({
                     from: e.sourceId,
                     to: e.targetId,
                     label: e.type,
-                    font: { align: 'middle', size: 10 }
+                    title: JSON.stringify(e.properties || {})
                 }));
 
                 nodes.add(visNodes);
                 edges.add(visEdges);
 
-                document.getElementById('status').innerText = `Status: Online (${graph.nodes.length} nodes)`;
+                status.innerHTML = `<span style="color:#7ee787">● Online</span> &nbsp; ${graph.nodes.length} Nodes &nbsp; ${graph.edges.length} Links`;
+
+                // Stop physics after 2 seconds to save CPU
+                setTimeout(() => { if (physicsEnabled) network.stopSimulation(); }, 3000);
+
             } catch (e) {
-                document.getElementById('status').innerText = "Status: Error";
+                status.innerText = "Connection Failed. Is server running?";
                 console.error(e);
             }
         }
 
         function showDetails(nodeId) {
-            const nodeData = nodes.get(nodeId).data;
-            document.getElementById('node-id').innerText = nodeData.id;
-            document.getElementById('node-label').innerText = nodeData.label;
+            const node = nodes.get(nodeId).data;
+            const panel = document.getElementById('details-panel');
+            const table = document.getElementById('prop-table');
+            const title = document.getElementById('node-title');
 
-            const propsDiv = document.getElementById('node-props');
-            propsDiv.innerHTML = '';
+            title.innerHTML = `<span style="color:${getColorForLabel(node.label)}">${node.label}</span> <br> <span style="font-size:12px;color:#8b949e">${node.id}</span>`;
+            table.innerHTML = '';
 
-            for (const [key, value] of Object.entries(nodeData.properties)) {
-                propsDiv.innerHTML += `
-                    <div class="prop-row">
-                        <span class="prop-key">${key}</span>
-                        <span>${value}</span>
-                    </div>`;
+            // Add Properties
+            if (node.properties) {
+                for (const [key, value] of Object.entries(node.properties)) {
+                    // Handle Lists nicely
+                    let valDisplay = value;
+                    if (Array.isArray(value)) valDisplay = `[${value.join(', ')}]`;
+
+                    table.innerHTML += `
+                        <tr>
+                            <td class="prop-key">${key}</td>
+                            <td class="prop-val">${valDisplay}</td>
+                        </tr>`;
+                }
             }
 
-            document.getElementById('details-panel').classList.add('visible');
+            panel.classList.add('visible');
+
+            // Focus camera
+            network.focus(nodeId, {
+                scale: 1.2,
+                animation: { duration: 500, easingFunction: 'easeInOutQuad' }
+            });
+        }
+
+        function closeDetails() {
+            document.getElementById('details-panel').classList.remove('visible');
+            network.fit({ animation: { duration: 500 } });
+        }
+
+        function updateLegend() {
+            const container = document.getElementById('legend-container');
+            container.innerHTML = '';
+            for (const [label, color] of Object.entries(labelColorMap)) {
+                container.innerHTML += `<span class="badge" style="border-color:${color}; color:${color}">${label}</span>`;
+            }
+        }
+
+        function fitGraph() {
+            network.fit({ animation: { duration: 1000 } });
+        }
+
+        function togglePhysics() {
+            physicsEnabled = !physicsEnabled;
+            network.setOptions({ physics: { enabled: physicsEnabled } });
+        }
+
+        function handleSearch(e) {
+            if (e.key === 'Enter') {
+                const term = e.target.value.toLowerCase();
+                const found = nodes.get().find(n =>
+                    n.id.toLowerCase().includes(term) ||
+                    n.data.label.toLowerCase().includes(term)
+                );
+
+                if (found) {
+                    showDetails(found.id);
+                } else {
+                    alert('Node not found in current view.');
+                }
+            }
         }
 
         init();

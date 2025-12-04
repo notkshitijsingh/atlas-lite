@@ -24,7 +24,7 @@ public class ExitCommand extends AbstractCommand {
     public void execute(String[] args, GraphEngine engine) {
         System.out.println(" [SHUTDOWN] Saving shards...");
         // Ensure all changes held in memory are written to their respective segment files.
-        engine.commit();
+        engine.checkpoint();
         System.out.println(" [SHUTDOWN] Goodbye.");
         // Terminate the application.
         System.exit(0);

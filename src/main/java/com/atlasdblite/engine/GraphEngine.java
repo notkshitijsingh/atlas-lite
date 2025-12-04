@@ -3,6 +3,7 @@ package com.atlasdblite.engine;
 import com.atlasdblite.models.Node;
 import com.atlasdblite.models.Relation;
 import com.atlasdblite.security.CryptoManager;
+import com.google.gson.Gson;
 
 import java.io.File;
 import java.util.*;
@@ -11,29 +12,80 @@ import java.util.stream.Collectors;
 
 public class GraphEngine {
     private static final int BUCKET_COUNT = 16;
-    private static final int MAX_ACTIVE_SEGMENTS = 4;
+    private static final int MAX_ACTIVE_SEGMENTS = 8; // Increased cache for performance
+    
     private final DataSegment[] segments;
     private final String dbDirectory;
     private final CryptoManager crypto;
+    private final TransactionManager wal; // NEW: Write Ahead Log
+    private final Gson gson;
     private final ConcurrentLinkedDeque<Integer> lruQueue = new ConcurrentLinkedDeque<>();
+    
     private boolean autoIndexing = false;
 
     public GraphEngine(String dbDirectory) {
         this.dbDirectory = dbDirectory;
         this.crypto = new CryptoManager();
+        this.gson = new Gson();
+        this.wal = new TransactionManager(crypto); // Initialize WAL
         this.segments = new DataSegment[BUCKET_COUNT];
+        
         initialize();
+        recover(); // Replay logs on startup
     }
 
     private void initialize() {
         File dir = new File(dbDirectory);
-        if (!dir.exists())
-            dir.mkdirs();
+        if (!dir.exists()) dir.mkdirs();
         for (int i = 0; i < BUCKET_COUNT; i++) {
             segments[i] = new DataSegment(i, dbDirectory, crypto);
         }
     }
 
+    // --- ACID RECOVERY SYSTEM ---
+    private void recover() {
+        List<TransactionManager.WalEntry> logs = wal.readLog();
+        if (logs.isEmpty()) return;
+
+        System.out.println(" [RECOVERY] Replaying " + logs.size() + " operations from WAL...");
+        
+        for (TransactionManager.WalEntry entry : logs) {
+            applyOpToMemory(entry.operation, entry.payload);
+        }
+        System.out.println(" [RECOVERY] Database state restored.");
+    }
+
+    private void applyOpToMemory(String op, String json) {
+        try {
+            switch (op) {
+                case "ADD_NODE":
+                case "UPDATE_NODE":
+                    Node n = gson.fromJson(json, Node.class);
+                    getSegment(n.getId()).putNode(n);
+                    break;
+                case "DELETE_NODE":
+                    String id = json;
+                    if (getSegment(id).removeNode(id)) {
+                        for (DataSegment seg : segments) {
+                            if (seg != null) seg.removeRelationsTo(id);
+                        }
+                    }
+                    break;
+                case "ADD_LINK":
+                    Relation r = gson.fromJson(json, Relation.class);
+                    getSegment(r.getSourceId()).addRelation(r);
+                    break;
+                case "DELETE_LINK":
+                    Relation dRel = gson.fromJson(json, Relation.class);
+                    getSegment(dRel.getSourceId()).removeRelation(dRel.getSourceId(), dRel.getTargetId(), dRel.getType());
+                    break;
+            }
+        } catch (Exception e) {
+            System.err.println(" [RECOVERY FAIL] " + op + ": " + e.getMessage());
+        }
+    }
+
+    // --- Core Routing ---
     private DataSegment getSegment(String id) {
         int segId = Math.abs(id.hashCode()) % BUCKET_COUNT;
         touchSegment(segId);
@@ -45,31 +97,123 @@ public class GraphEngine {
         lruQueue.addFirst(segId);
         while (lruQueue.size() > MAX_ACTIVE_SEGMENTS) {
             Integer lruId = lruQueue.pollLast();
-            if (lruId != null)
-                segments[lruId].unload();
+            if (lruId != null) segments[lruId].unload();
         }
     }
 
-    // --- NEW: Helper to find specific connection info ---
+    // --- WRITE OPERATIONS (Log First, Then Apply) ---
+
+    public void persistNode(Node node) {
+        wal.writeEntry(new TransactionManager.WalEntry("ADD_NODE", gson.toJson(node)));
+        getSegment(node.getId()).putNode(node);
+    }
+
+    public boolean updateNode(String id, String key, String value) {
+        DataSegment seg = getSegment(id);
+        Node node = seg.getNode(id);
+        if (node == null) return false;
+        
+        node.addProperty(key, value);
+        
+        wal.writeEntry(new TransactionManager.WalEntry("UPDATE_NODE", gson.toJson(node)));
+        seg.putNode(node);
+        return true;
+    }
+
+    public boolean deleteNode(String id) {
+        wal.writeEntry(new TransactionManager.WalEntry("DELETE_NODE", id));
+        boolean removed = getSegment(id).removeNode(id);
+        if (removed) {
+            for (int i = 0; i < BUCKET_COUNT; i++) {
+                touchSegment(i); // Ensure segment is loaded to clean up edges
+                segments[i].removeRelationsTo(id);
+            }
+        }
+        return removed;
+    }
+
+    public void persistRelation(String fromId, String toId, String type, Map<String, Object> props) {
+        if (getSegment(fromId).getNode(fromId) == null || getSegment(toId).getNode(toId) == null) {
+            throw new IllegalArgumentException("Nodes not found");
+        }
+        Relation r = new Relation(fromId, toId, type, props);
+        wal.writeEntry(new TransactionManager.WalEntry("ADD_LINK", gson.toJson(r)));
+        getSegment(fromId).addRelation(r);
+    }
+
+    // Overload for compatibility
+    public void persistRelation(String fromId, String toId, String type) { 
+        persistRelation(fromId, toId, type, new HashMap<>()); 
+    }
+
+    public boolean deleteRelation(String fromId, String toId, String type) {
+        Relation target = new Relation(fromId, toId, type);
+        wal.writeEntry(new TransactionManager.WalEntry("DELETE_LINK", gson.toJson(target)));
+        return getSegment(fromId).removeRelation(fromId, toId, type);
+    }
+
+    public boolean updateRelation(String fromId, String toId, String oldType, String newType) {
+        // Atomic switch logic handled by logging delete then add
+        if (deleteRelation(fromId, toId, oldType)) {
+            persistRelation(fromId, toId, newType);
+            return true;
+        }
+        return false;
+    }
+
+    // --- CHECKPOINT (Replaces old commit) ---
+    public void checkpoint() {
+        System.out.println(" [ENGINE] Performing Checkpoint...");
+        for (Integer id : lruQueue) {
+            segments[id].save();
+        }
+        wal.clearLog(); // Truncate WAL after successful disk save
+        System.out.println(" [ENGINE] Checkpoint Complete.");
+    }
+
+    // --- READ / QUERY OPERATIONS ---
+
+    public Node getNode(String id) { 
+        return getSegment(id).getNode(id); 
+    }
+
     public Relation getRelation(String fromId, String toId) {
         DataSegment seg = getSegment(fromId);
         List<Relation> links = seg.getRelationsFrom(fromId);
         for (Relation r : links) {
-            if (r.getTargetId().equals(toId))
-                return r;
+            if (r.getTargetId().equals(toId)) return r;
         }
         return null;
     }
 
-    // --- Pathfinding ---
+    public List<Node> search(String query) {
+        List<Node> results = new ArrayList<>();
+        for (int i = 0; i < BUCKET_COUNT; i++) {
+            touchSegment(i);
+            results.addAll(segments[i].search(query));
+        }
+        return results;
+    }
 
+    public List<Node> traverse(String fromId, String type) {
+        DataSegment sourceSeg = getSegment(fromId);
+        List<Relation> links = sourceSeg.getRelationsFrom(fromId);
+        return links.stream()
+                .filter(r -> r.getType().equalsIgnoreCase(type))
+                .map(r -> getSegment(r.getTargetId()).getNode(r.getTargetId()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    // --- PATHFINDING ALGORITHMS ---
+
+    // 1. Weighted Dijkstra (Min/Max Cost)
     public PathResult findWeightedPath(String startId, String endId, String weightKey, boolean findLowest) {
-        if (getNode(startId) == null || getNode(endId) == null)
-            return null;
+        if (getNode(startId) == null || getNode(endId) == null) return null;
 
-        Comparator<PathNode> comparator = findLowest
-                ? Comparator.comparingDouble(n -> n.cost)
-                : (n1, n2) -> Double.compare(n2.cost, n1.cost);
+        Comparator<PathNode> comparator = findLowest 
+            ? Comparator.comparingDouble(n -> n.cost) 
+            : (n1, n2) -> Double.compare(n2.cost, n1.cost);
 
         PriorityQueue<PathNode> pq = new PriorityQueue<>(comparator);
         pq.add(new PathNode(startId, 0.0));
@@ -84,35 +228,24 @@ public class GraphEngine {
             PathNode current = pq.poll();
             String currId = current.id;
 
-            if (currId.equals(endId)) {
-                return new PathResult(reconstructPath(parentMap, endId), current.cost);
-            }
+            if (currId.equals(endId)) return new PathResult(reconstructPath(parentMap, endId), current.cost);
 
-            if (visited.contains(currId))
-                continue;
+            if (visited.contains(currId)) continue;
             visited.add(currId);
 
             DataSegment seg = getSegment(currId);
-            List<Relation> links = seg.getRelationsFrom(currId);
-
-            for (Relation r : links) {
+            for (Relation r : seg.getRelationsFrom(currId)) {
                 String neighbor = r.getTargetId();
-                if (visited.contains(neighbor))
-                    continue;
+                if (visited.contains(neighbor)) continue;
 
                 double weight = 1.0;
                 if (weightKey != null && r.getProperties().containsKey(weightKey)) {
-                    try {
-                        Object val = r.getProperties().get(weightKey);
-                        weight = Double.parseDouble(val.toString());
-                    } catch (Exception ignored) {
-                    }
+                    try { weight = Double.parseDouble(r.getProperties().get(weightKey).toString()); } 
+                    catch (Exception ignored) {}
                 }
 
                 double newCost = costMap.get(currId) + weight;
-                double currentNeighborCost = costMap.getOrDefault(neighbor,
-                        findLowest ? Double.MAX_VALUE : -Double.MAX_VALUE);
-
+                double currentNeighborCost = costMap.getOrDefault(neighbor, findLowest ? Double.MAX_VALUE : -Double.MAX_VALUE);
                 boolean improved = findLowest ? (newCost < currentNeighborCost) : (newCost > currentNeighborCost);
 
                 if (improved) {
@@ -125,31 +258,10 @@ public class GraphEngine {
         return null;
     }
 
-    private static class PathNode {
-        String id;
-        double cost;
-
-        PathNode(String id, double cost) {
-            this.id = id;
-            this.cost = cost;
-        }
-    }
-
-    public static class PathResult {
-        public List<String> path;
-        public double totalCost;
-
-        public PathResult(List<String> p, double c) {
-            this.path = p;
-            this.totalCost = c;
-        }
-    }
-
+    // 2. Unweighted BFS (Shortest Hops)
     public List<String> findShortestPath(String startId, String endId, int maxDepth) {
-        if (getNode(startId) == null || getNode(endId) == null)
-            return Collections.emptyList();
-        if (startId.equals(endId))
-            return Collections.singletonList(startId);
+        if (getNode(startId) == null || getNode(endId) == null) return Collections.emptyList();
+        if (startId.equals(endId)) return Collections.singletonList(startId);
 
         Queue<String> queue = new LinkedList<>();
         queue.add(startId);
@@ -159,27 +271,20 @@ public class GraphEngine {
 
         int currentDepth = 0;
         while (!queue.isEmpty()) {
-            if (currentDepth++ > maxDepth)
-                break;
+            if (currentDepth++ > maxDepth) break;
             int levelSize = queue.size();
             for (int i = 0; i < levelSize; i++) {
                 String current = queue.poll();
-                if (current == null)
-                    continue;
-                if (current.equals(endId))
-                    return reconstructPath(parentMap, endId);
+                if (current.equals(endId)) return reconstructPath(parentMap, endId);
 
                 DataSegment seg = getSegment(current);
-                List<Relation> outLinks = seg.getRelationsFrom(current);
-
-                for (Relation r : outLinks) {
+                for (Relation r : seg.getRelationsFrom(current)) {
                     String neighbor = r.getTargetId();
                     if (!visited.contains(neighbor)) {
                         visited.add(neighbor);
                         parentMap.put(neighbor, current);
                         queue.add(neighbor);
-                        if (neighbor.equals(endId))
-                            return reconstructPath(parentMap, endId);
+                        if (neighbor.equals(endId)) return reconstructPath(parentMap, endId);
                     }
                 }
             }
@@ -197,94 +302,25 @@ public class GraphEngine {
         return path;
     }
 
-    // --- CRUD / Query Delegates ---
-    public void persistNode(Node node) {
-        getSegment(node.getId()).putNode(node);
-        commit();
+    public static class PathResult {
+        public List<String> path;
+        public double totalCost;
+        public PathResult(List<String> p, double c) { this.path = p; this.totalCost = c; }
     }
 
-    public boolean updateNode(String id, String key, String value) {
-        DataSegment seg = getSegment(id);
-        Node node = seg.getNode(id);
-        if (node == null)
-            return false;
-        node.addProperty(key, value);
-        seg.putNode(node);
-        commit();
-        return true;
+    private static class PathNode {
+        String id; double cost;
+        PathNode(String id, double cost) { this.id = id; this.cost = cost; }
     }
 
-    public boolean deleteNode(String id) {
-        boolean removed = getSegment(id).removeNode(id);
-        if (removed) {
-            for (int i = 0; i < BUCKET_COUNT; i++) {
-                touchSegment(i);
-                segments[i].removeRelationsTo(id);
-            }
-            commit();
-        }
-        return removed;
-    }
+    // --- ADMIN / UTILS ---
 
-    public void persistRelation(String fromId, String toId, String type, Map<String, Object> props) {
-        if (getSegment(fromId).getNode(fromId) == null || getSegment(toId).getNode(toId) == null)
-            throw new IllegalArgumentException("Nodes not found");
-        getSegment(fromId).addRelation(new Relation(fromId, toId, type, props));
-        commit();
+    public void setAutoIndexing(boolean enabled) { 
+        this.autoIndexing = enabled; 
+        for (DataSegment seg : segments) seg.setIndexing(enabled); 
     }
-
-    public void persistRelation(String fromId, String toId, String type) {
-        persistRelation(fromId, toId, type, new HashMap<>());
-    }
-
-    public boolean deleteRelation(String fromId, String toId, String type) {
-        boolean removed = getSegment(fromId).removeRelation(fromId, toId, type);
-        if (removed)
-            commit();
-        return removed;
-    }
-
-    public boolean updateRelation(String fromId, String toId, String oldType, String newType) {
-        DataSegment seg = getSegment(fromId);
-        boolean removed = seg.removeRelation(fromId, toId, oldType);
-        if (removed) {
-            seg.addRelation(new Relation(fromId, toId, newType));
-            commit();
-            return true;
-        }
-        return false;
-    }
-
-    public Node getNode(String id) {
-        return getSegment(id).getNode(id);
-    }
-
-    public List<Node> search(String query) {
-        List<Node> results = new ArrayList<>();
-        for (int i = 0; i < BUCKET_COUNT; i++) {
-            touchSegment(i);
-            results.addAll(segments[i].search(query));
-        }
-        return results;
-    }
-
-    public List<Node> traverse(String fromId, String type) {
-        DataSegment sourceSeg = getSegment(fromId);
-        List<Relation> links = sourceSeg.getRelationsFrom(fromId);
-        return links.stream().filter(r -> r.getType().equalsIgnoreCase(type))
-                .map(r -> getSegment(r.getTargetId()).getNode(r.getTargetId()))
-                .filter(Objects::nonNull).collect(Collectors.toList());
-    }
-
-    public void setAutoIndexing(boolean enabled) {
-        this.autoIndexing = enabled;
-        for (DataSegment seg : segments)
-            seg.setIndexing(enabled);
-    }
-
-    public boolean isAutoIndexing() {
-        return autoIndexing;
-    }
+    
+    public boolean isAutoIndexing() { return autoIndexing; }
 
     public Collection<Node> getAllNodes() {
         List<Node> all = new ArrayList<>();
@@ -304,18 +340,16 @@ public class GraphEngine {
         return all;
     }
 
-    public void commit() {
-        for (Integer id : lruQueue)
-            segments[id].save();
-    }
-
     public void wipeDatabase() {
-        for (DataSegment s : segments)
-            s.unload();
+        wal.clearLog();
+        for (DataSegment s : segments) s.unload();
         File dir = new File(dbDirectory);
-        if (dir.exists())
-            for (File f : dir.listFiles())
-                f.delete();
+        if (dir.exists()) {
+            for (File f : dir.listFiles()) f.delete();
+        }
         initialize();
     }
+    
+    // Note: Use checkpoint() instead of commit() for manual saves
+    public void commit() { checkpoint(); }
 }

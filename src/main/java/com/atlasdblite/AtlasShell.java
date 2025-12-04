@@ -26,7 +26,8 @@ public class AtlasShell {
         
         registry.register(new StatsCommand());
         registry.register(new BackupCommand());
-        registry.register(new ImportCommand()); // NEW: Import
+        registry.register(new CheckpointCommand());
+        registry.register(new ImportCommand());
         registry.register(new ExportCommand());
         registry.register(new NukeCommand());
         registry.register(new ServerCommand());
