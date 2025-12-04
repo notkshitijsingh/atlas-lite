@@ -5,7 +5,7 @@
 
     <groupId>com.atlasdblite</groupId>
     <artifactId>atlasdb-lite</artifactId>
-    <version>2.1.0-SECURE</version>
+    <version>4.0.0-RELEASE</version>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -20,8 +20,7 @@
             <artifactId>gson</artifactId>
             <version>2.10.1</version>
         </dependency>
-
-        <!-- TestNG Framework -->
+        <!-- Testing -->
         <dependency>
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>
@@ -41,11 +40,15 @@
                     <mainClass>com.atlasdblite.AtlasShell</mainClass>
                 </configuration>
             </plugin>
-            <!-- Surefire Plugin (Runs tests) -->
+            <!-- Compiler -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.1.2</version>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                </configuration>
             </plugin>
         </plugins>
     </build>
