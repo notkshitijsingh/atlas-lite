@@ -19,9 +19,10 @@ public class AtlasShell {
         registry.register(new UpdateLinkCommand());
         
         registry.register(new ShowCommand());
+        registry.register(new SelectCommand()); // NEW: AQL Query Engine
         registry.register(new QueryCommand());
         registry.register(new SearchCommand());
-        registry.register(new PathCommand()); // NEW: Pathfinding
+        registry.register(new PathCommand()); 
         
         registry.register(new StatsCommand());
         registry.register(new BackupCommand());
@@ -62,7 +63,7 @@ public class AtlasShell {
         System.out.println("  / _ \\| __| |/ _` / __|| | | |  _ \\ ");
         System.out.println(" / ___ \\ |_| | (_| \\__ \\| |_| | |_) |");
         System.out.println("/_/   \\_\\__|_|\\__,_|___/|____/|____/ ");
-        System.out.println("      ATLASDB-LITE v3.2      ");
+        System.out.println("      ATLASDB-LITE v3.4      ");
         System.out.println("   Sharded | Encrypted | 'help' for commands ");
     }
 }
