@@ -1,29 +1,28 @@
+# AtlasDB-Lite v4.0
 
-# AtlasDB-Lite v3.4
-
-AtlasDB-Lite is a **scalable, serverless, and encrypted Knowledge Graph engine** written in pure Java.  
+AtlasDB-Lite is a **scalable, serverless, and encrypted Knowledge Graph engine** written in pure Java.
 It is designed for **embedded environments** where you need Graph capabilities (Relationships, Pathfinding) without the overhead of Docker containers or heavy database servers.
 
 ---
 
 ## 🚀 Key Features
 
-- **Sharded Architecture:**  
+- **Sharded Architecture:**
   Data is split across **16 encrypted buckets (Shards)**, allowing databases larger than available RAM via LRU caching.
 
-- **Smart CLI:**  
+- **Smart CLI:**
   UNIX-style shell with fuzzy search, interactive resolution, and auto-ID generation.
 
-- **AQL (Atlas Query Language):**  
+- **AQL (Atlas Query Language):**
   SQL-like filtering (e.g., `select User where age > 21`).
 
-- **Visual Dashboard:**  
+- **Visual Dashboard:**
   Built-in web server provides an interactive physics-based graph visualization.
 
-- **Secure:**  
+- **Secure:**
   All data at rest is encrypted with **AES-256**.
 
-- **Crash Safe:**  
+- **Crash Safe:**
   Atomic writes ensure no data corruption on power loss.
 
 ---
@@ -74,7 +73,7 @@ atlas-sharded> select User where role = Admin
 atlas-sharded> select Server where ip contains 192.168
 ```
 
-### 4. Visual Dashboard 
+### 4. Visual Dashboard
 Visualize your graph in the browser.
 ```bash
 
@@ -84,6 +83,18 @@ atlas-sharded> server start 8080
 # Open in browser
 http://localhost:8080
 ```
+
+### 5. Importing Data from CSV
+You can bulk import nodes and links from CSV files.
+```bash
+# Import nodes
+atlas-sharded> import csv/kanto_nodes.csv --type=node
+
+# Import links
+atlas-sharded> import csv/kanto_links.csv --type=link
+```
+The `csv` directory contains an example dataset based on the Kanto region from Pokémon.
+
 ---
 ## 🔐 Security
 
