@@ -42,7 +42,7 @@ public class AtlasShell {
         printBanner();
 
         while (true) {
-            System.out.print("atlas-sharded> ");
+            System.out.print("atlas> ");
             String input = scanner.nextLine().trim();
 
             if (input.isEmpty()) continue;

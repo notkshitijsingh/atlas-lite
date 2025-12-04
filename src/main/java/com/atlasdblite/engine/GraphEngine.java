@@ -50,68 +50,108 @@ public class GraphEngine {
         }
     }
 
-    // --- CRUD ---
-    public void persistNode(Node node) {
-        getSegment(node.getId()).putNode(node);
-        commit();
-    }
+    // --- UPDATED: Weighted Pathfinding (Supports Min or Max) ---
 
-    public boolean updateNode(String id, String key, String value) {
-        DataSegment seg = getSegment(id);
-        Node node = seg.getNode(id);
-        if (node == null)
-            return false;
-        node.addProperty(key, value);
-        seg.putNode(node);
-        commit();
-        return true;
-    }
+    public PathResult findWeightedPath(String startId, String endId, String weightKey, boolean findLowest) {
+        if (getNode(startId) == null || getNode(endId) == null)
+            return null;
 
-    public boolean deleteNode(String id) {
-        boolean removed = getSegment(id).removeNode(id);
-        if (removed) {
-            for (int i = 0; i < BUCKET_COUNT; i++) {
-                touchSegment(i);
-                segments[i].removeRelationsTo(id);
+        // Comparator logic:
+        // findLowest = true -> Sort Ascending (Smallest first) -> Min-Heap
+        // findLowest = false -> Sort Descending (Largest first) -> Max-Heap
+        Comparator<PathNode> comparator = findLowest
+                ? Comparator.comparingDouble(n -> n.cost)
+                : (n1, n2) -> Double.compare(n2.cost, n1.cost);
+
+        PriorityQueue<PathNode> pq = new PriorityQueue<>(comparator);
+        pq.add(new PathNode(startId, 0.0));
+
+        Map<String, Double> costMap = new HashMap<>();
+        Map<String, String> parentMap = new HashMap<>();
+        Set<String> visited = new HashSet<>();
+
+        // Initialize cost map
+        // If finding lowest, we want defaults to be Infinity (so any real path is
+        // smaller).
+        // If finding highest, we want defaults to be -Infinity (so any real path is
+        // larger).
+        costMap.put(startId, 0.0);
+
+        while (!pq.isEmpty()) {
+            PathNode current = pq.poll();
+            String currId = current.id;
+
+            // Optimization: If we found a path to endId, and because it's Dijkstra/Greedy,
+            // the first time we pull endId from PQ, it is the optimal path.
+            if (currId.equals(endId)) {
+                return new PathResult(reconstructPath(parentMap, endId), current.cost);
             }
-            commit();
+
+            if (visited.contains(currId))
+                continue;
+            visited.add(currId);
+
+            DataSegment seg = getSegment(currId);
+            List<Relation> links = seg.getRelationsFrom(currId);
+
+            for (Relation r : links) {
+                String neighbor = r.getTargetId();
+                if (visited.contains(neighbor))
+                    continue;
+
+                double weight = 1.0;
+                if (weightKey != null && r.getProperties().containsKey(weightKey)) {
+                    try {
+                        Object val = r.getProperties().get(weightKey);
+                        weight = Double.parseDouble(val.toString());
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                double newCost = costMap.get(currId) + weight;
+
+                // Default value for unexplored nodes depends on mode
+                double currentNeighborCost = costMap.getOrDefault(neighbor,
+                        findLowest ? Double.MAX_VALUE : -Double.MAX_VALUE);
+
+                boolean improved;
+                if (findLowest) {
+                    improved = newCost < currentNeighborCost;
+                } else {
+                    improved = newCost > currentNeighborCost;
+                }
+
+                if (improved) {
+                    costMap.put(neighbor, newCost);
+                    parentMap.put(neighbor, currId);
+                    pq.add(new PathNode(neighbor, newCost));
+                }
+            }
         }
-        return removed;
+        return null;
     }
 
-    // UPDATED: Now supports properties map
-    public void persistRelation(String fromId, String toId, String type, Map<String, Object> props) {
-        if (getSegment(fromId).getNode(fromId) == null || getSegment(toId).getNode(toId) == null) {
-            throw new IllegalArgumentException("Nodes not found");
+    private static class PathNode {
+        String id;
+        double cost;
+
+        PathNode(String id, double cost) {
+            this.id = id;
+            this.cost = cost;
         }
-        getSegment(fromId).addRelation(new Relation(fromId, toId, type, props));
-        commit();
     }
 
-    // Overload for backward compatibility
-    public void persistRelation(String fromId, String toId, String type) {
-        persistRelation(fromId, toId, type, new HashMap<>());
-    }
+    public static class PathResult {
+        public List<String> path;
+        public double totalCost;
 
-    public boolean deleteRelation(String fromId, String toId, String type) {
-        boolean removed = getSegment(fromId).removeRelation(fromId, toId, type);
-        if (removed)
-            commit();
-        return removed;
-    }
-
-    public boolean updateRelation(String fromId, String toId, String oldType, String newType) {
-        DataSegment seg = getSegment(fromId);
-        boolean removed = seg.removeRelation(fromId, toId, oldType);
-        if (removed) {
-            seg.addRelation(new Relation(fromId, toId, newType));
-            commit();
-            return true;
+        public PathResult(List<String> p, double c) {
+            this.path = p;
+            this.totalCost = c;
         }
-        return false;
     }
 
-    // --- Pathfinding ---
+    // --- BFS (Unweighted) ---
     public List<String> findShortestPath(String startId, String endId, int maxDepth) {
         if (getNode(startId) == null || getNode(endId) == null)
             return Collections.emptyList();
@@ -164,7 +204,64 @@ public class GraphEngine {
         return path;
     }
 
-    // --- Querying/Admin ---
+    // --- CRUD / Query Delegates (Keep exactly as before) ---
+    public void persistNode(Node node) {
+        getSegment(node.getId()).putNode(node);
+        commit();
+    }
+
+    public boolean updateNode(String id, String key, String value) {
+        DataSegment seg = getSegment(id);
+        Node node = seg.getNode(id);
+        if (node == null)
+            return false;
+        node.addProperty(key, value);
+        seg.putNode(node);
+        commit();
+        return true;
+    }
+
+    public boolean deleteNode(String id) {
+        boolean removed = getSegment(id).removeNode(id);
+        if (removed) {
+            for (int i = 0; i < BUCKET_COUNT; i++) {
+                touchSegment(i);
+                segments[i].removeRelationsTo(id);
+            }
+            commit();
+        }
+        return removed;
+    }
+
+    public void persistRelation(String fromId, String toId, String type, Map<String, Object> props) {
+        if (getSegment(fromId).getNode(fromId) == null || getSegment(toId).getNode(toId) == null)
+            throw new IllegalArgumentException("Nodes not found");
+        getSegment(fromId).addRelation(new Relation(fromId, toId, type, props));
+        commit();
+    }
+
+    public void persistRelation(String fromId, String toId, String type) {
+        persistRelation(fromId, toId, type, new HashMap<>());
+    }
+
+    public boolean deleteRelation(String fromId, String toId, String type) {
+        boolean removed = getSegment(fromId).removeRelation(fromId, toId, type);
+        if (removed)
+            commit();
+        return removed;
+    }
+
+    public boolean updateRelation(String fromId, String toId, String oldType, String newType) {
+        DataSegment seg = getSegment(fromId);
+        boolean removed = seg.removeRelation(fromId, toId, oldType);
+        if (removed) {
+            seg.addRelation(new Relation(fromId, toId, newType));
+            commit();
+            return true;
+        }
+        return false;
+    }
+
     public Node getNode(String id) {
         return getSegment(id).getNode(id);
     }
