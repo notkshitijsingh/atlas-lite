@@ -32,16 +32,28 @@ public class PathCommand extends AbstractCommand {
             printError("No path found between '" + start.getLabel() + "' and '" + end.getLabel() + "'");
         } else {
             System.out.println("\n [PATH FOUND] " + (path.size() - 1) + " hops:");
-            System.out.print("   ");
+            System.out.println(" ==================================================");
+            
             for (int i = 0; i < path.size(); i++) {
                 String id = path.get(i);
                 Node n = engine.getNode(id);
-                String display = (n != null) ? n.getLabel() : id;
                 
-                System.out.print(display);
-                if (i < path.size() - 1) System.out.print(" --> ");
+                // n.toString() now includes properties based on your Node model update
+                String display = (n != null) ? n.toString() : "[ID: " + id + " (Missing)]";
+                
+                if (i == 0) {
+                    System.out.println("   (START) " + display);
+                } else {
+                    System.out.println("      |    ");
+                    System.out.println("      v    ");
+                    if (i == path.size() - 1) {
+                        System.out.println("   (END)   " + display);
+                    } else {
+                        System.out.println("   (HOP " + i + ")  " + display);
+                    }
+                }
             }
-            System.out.println("\n");
+            System.out.println(" ==================================================\n");
         }
     }
 }
