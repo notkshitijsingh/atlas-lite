@@ -231,6 +231,34 @@
             background: #21262d;
             border: 1px solid var(--border);
         }
+
+        #context-menu {
+            display: none;
+            position: absolute;
+            background: rgba(50, 50, 50, 0.98);
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 5px 0;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.6);
+            z-index: 1000;
+        }
+
+        .context-menu-item {
+            padding: 8px 15px;
+            cursor: pointer;
+            color: #ddd;
+            font-size: 14px;
+        }
+
+        .context-menu-item:hover {
+            background: #4CAF50;
+            color: white;
+        }
+        .context-menu-separator {
+            height: 1px;
+            background-color: #444;
+            margin: 5px 0;
+        }
     </style>
 </head>
 
@@ -306,6 +334,7 @@
         let isClustered = false;
         const nodes = new vis.DataSet([]);
         const edges = new vis.DataSet([]);
+        let activeNodeId = null;
 
         // Color Palette for Auto-Coloring Labels
         const colors = ['#2f81f7', '#d2a8ff', '#7ee787', '#ff7b72', '#f2cc60', '#a5d6ff', '#ffa657'];
@@ -375,9 +404,68 @@
                         network.openCluster(nodeId);
                     }
                 }
+                hideContextMenu();
             });
 
+            network.on("oncontext", function (params) {
+                params.event.preventDefault();
+                activeNodeId = network.getNodeAt(params.pointer.DOM);
+                if (activeNodeId) {
+                    showContextMenu(params.pointer.DOM.x, params.pointer.DOM.y);
+                } else {
+                    hideContextMenu();
+                }
+            });
+
+            document.addEventListener('click', hideContextMenu);
+
+            setupContextMenu();
             fetchGraph();
+        }
+
+        function showContextMenu(x, y) {
+            const menu = document.getElementById('context-menu');
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+            menu.style.display = 'block';
+        }
+
+        function hideContextMenu() {
+            document.getElementById('context-menu').style.display = 'none';
+        }
+
+        function setupContextMenu() {
+            document.getElementById('ctx-copy-id').onclick = () => {
+                navigator.clipboard.writeText(activeNodeId).then(() => {
+                    // Maybe show a small notification?
+                });
+                hideContextMenu();
+            };
+            document.getElementById('ctx-set-from').onclick = () => {
+                document.getElementById('link-from').value = activeNodeId;
+                hideContextMenu();
+            };
+            document.getElementById('ctx-set-to').onclick = () => {
+                document.getElementById('link-to').value = activeNodeId;
+                hideContextMenu();
+            };
+            document.getElementById('ctx-delete-node').onclick = async () => {
+                if (confirm(`Are you sure you want to delete node "${activeNodeId}"?`)) {
+                    try {
+                        const response = await fetch(`/api/node/${activeNodeId}`, { method: 'DELETE' });
+                        if (response.ok) {
+                            fetchGraph();
+                        } else {
+                            const error = await response.json();
+                            alert("Error deleting node: " + error.error);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        alert("An error occurred while deleting the node.");
+                    }
+                }
+                hideContextMenu();
+            };
         }
 
         async function fetchGraph() {
@@ -744,6 +832,101 @@
         }
 
         init();
+
+        async function addNode() {
+            const id = document.getElementById('add-node-id').value;
+            const label = document.getElementById('add-node-label').value;
+            const propsString = document.getElementById('add-node-props').value;
+            if (!id || !label) {
+                alert("Node ID and Label are required.");
+                return;
+            }
+
+            let props = {};
+            if (propsString) {
+                try {
+                    props = propsString.split(',').reduce((acc, curr) => {
+                        const [key, value] = curr.split(':');
+                        if (key && value) {
+                            acc[key.trim()] = value.trim();
+                        }
+                        return acc;
+                    }, {});
+                } catch (e) {
+                    alert("Invalid properties format. Use 'k:v,k:v'.");
+                    return;
+                }
+            }
+
+            try {
+                const vectorize = document.getElementById('add-node-vectorize').checked;
+                const response = await fetch('/api/node', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, label, props, vectorize })
+                });
+                if (response.ok) {
+                    fetchGraph();
+                    document.getElementById('add-node-id').value = '';
+                    document.getElementById('add-node-label').value = '';
+                    document.getElementById('add-node-props').value = '';
+                    document.getElementById('add-node-vectorize').checked = false;
+                } else {
+                    const error = await response.json();
+                    alert("Error adding node: " + error.error);
+                }
+            } catch (e) {
+                console.error(e);
+                alert("An error occurred.");
+            }
+        }
+
+        async function linkNodes() {
+            const from = document.getElementById('link-from').value;
+            const to = document.getElementById('link-to').value;
+            const type = document.getElementById('link-type').value;
+            if (!from || !to || !type) {
+                alert("From, To, and Type are required.");
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/link', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ from, to, type })
+                });
+                if (response.ok) {
+                    fetchGraph();
+                    document.getElementById('link-from').value = '';
+                    document.getElementById('link-to').value = '';
+                    document.getElementById('link-type').value = '';
+                } else {
+                    const error = await response.json();
+                    alert("Error linking nodes: " + error.error);
+                }
+            } catch (e) {
+                console.error(e);
+                alert("An error occurred.");
+            }
+        }
+
+        async function searchNodes() {
+            const query = document.getElementById('search-query').value;
+            if (!query) {
+                network.unselectAll();
+                return;
+            }
+            try {
+                const response = await fetch(`/api/search?q=${query}`);
+                const matches = await response.json();
+                const matchIds = matches.map(n => n.id);
+                network.selectNodes(matchIds);
+            } catch (e) {
+                console.error(e);
+                alert("An error occurred during search.");
+            }
+        }
     </script>
 </body>
 

@@ -6,6 +6,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Command to create a new node in the graph.
@@ -33,6 +35,23 @@ public class AddNodeCommand extends AbstractCommand {
             printError("Usage: add-node [id] <label> [prop:val]...");
             return;
         }
+
+        // Support a flag --vectorize (or -v). We remove flags from the
+        // argument list so the rest of the parsing keeps the same index
+        // expectations (args[0] is the command name).
+        boolean vectorize = false;
+        List<String> filtered = new ArrayList<>();
+        filtered.add(args[0]);
+        for (int i = 1; i < args.length; i++) {
+            String a = args[i];
+            if ("--vectorize".equalsIgnoreCase(a) || "-v".equalsIgnoreCase(a)) {
+                vectorize = true;
+            } else {
+                filtered.add(a);
+            }
+        }
+
+        String[] fargs = filtered.toArray(new String[0]);
 
         String id;
         String label;
@@ -78,7 +97,11 @@ public class AddNodeCommand extends AbstractCommand {
             }
         }
 
+        if (vectorize) {
+            node.addProperty("__vectorize", "true");
+        }
+
         engine.persistNode(node);
-        printSuccess("Node created: " + node);
+        printSuccess("Node created: " + node + (vectorize ? " [vectorize]" : ""));
     }
 }
