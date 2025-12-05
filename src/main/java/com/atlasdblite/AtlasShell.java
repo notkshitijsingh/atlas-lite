@@ -34,6 +34,7 @@ public class AtlasShell {
         registry.register(new IndexCommand());
         registry.register(new ExitCommand());
         registry.register(new ClearCommand());
+        registry.register(new AnalyzeCommand());
 
         Scanner scanner = new Scanner(System.in);
         
@@ -43,6 +44,7 @@ public class AtlasShell {
 
         while (true) {
             System.out.print("atlas> ");
+            System.out.flush();
             String input = scanner.nextLine().trim();
 
             if (input.isEmpty()) continue;

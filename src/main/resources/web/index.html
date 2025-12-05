@@ -359,6 +359,7 @@
             try {
                 const response = await fetch('/api/graph');
                 const graph = await response.json();
+                const scores = graph.analytics;
 
                 nodes.clear();
                 edges.clear();
@@ -367,13 +368,19 @@
                 // Process Nodes
                 const visNodes = graph.nodes.map(n => {
                     const color = getColorForLabel(n.label);
+
+                    // Calculate size based on PageRank
+                    // Base size 15 + (Score * 5). Since scores are 0-10, size is 15-65.
+                    const score = scores[n.id] || 0;
+                    const size = 15 + (score * 5);
+
                     return {
                         id: n.id,
-                        label: n.label.length > 10 ? n.label.substring(0, 8) + '..' : n.label, // Short label on graph
-                        title: `ID: ${n.id}\nLabel: ${n.label}`, // Tooltip
+                        label: n.label.length > 10 ? n.label.substring(0, 8) + '..' : n.label,
+                        title: `ID: ${n.id}\nLabel: ${n.label}\nRank: ${score.toFixed(2)}`, // Add Rank to tooltip
                         color: { background: '#161b22', border: color, highlight: { background: color, border: '#fff' } },
-                        size: 20 + (n.properties ? Object.keys(n.properties).length * 2 : 0), // Dynamic size
-                        data: n // Store full data
+                        size: size, // Use dynamic size
+                        data: n
                     };
                 });
 

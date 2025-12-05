@@ -51,7 +51,17 @@ public class APIServer {
 
         // 2. Full Graph Data
         server.createContext("/api/graph", exchange -> {
-            GraphDTO dto = new GraphDTO(engine.getAllNodes(), engine.getAllRelations());
+            Map<String, Double> scores = engine.getPageRankScores();
+
+            if (scores.isEmpty()) {
+                scores = engine.calculatePageRank(20, 0.85);
+            }
+
+            GraphDTO dto = new GraphDTO(
+                engine.getAllNodes(),
+                engine.getAllRelations(),
+                scores
+            );
             sendResponse(exchange, 200, gson.toJson(dto));
         });
 
@@ -123,6 +133,12 @@ public class APIServer {
     private static class GraphDTO {
         Collection<Node> nodes;
         List<Relation> edges;
-        GraphDTO(Collection<Node> n, List<Relation> e) { this.nodes = n; this.edges = e; }
+        Map<String, Double> analytics;
+
+        GraphDTO(Collection<Node> nodes, List<Relation> edges, Map<String, Double> analytics) {
+            this.nodes = nodes;
+            this.edges = edges;
+            this.analytics = analytics;
+        }
     }
 }
