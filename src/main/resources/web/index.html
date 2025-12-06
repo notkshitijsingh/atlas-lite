@@ -231,6 +231,34 @@
             background: #21262d;
             border: 1px solid var(--border);
         }
+
+        #context-menu {
+            display: none;
+            position: absolute;
+            background: rgba(50, 50, 50, 0.98);
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 5px 0;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.6);
+            z-index: 1000;
+        }
+
+        .context-menu-item {
+            padding: 8px 15px;
+            cursor: pointer;
+            color: #ddd;
+            font-size: 14px;
+        }
+
+        .context-menu-item:hover {
+            background: #4CAF50;
+            color: white;
+        }
+        .context-menu-separator {
+            height: 1px;
+            background-color: #444;
+            margin: 5px 0;
+        }
     </style>
 </head>
 
@@ -248,10 +276,26 @@
             <div id="search-results" class="search-dropdown"></div>
         </div>
 
+        <!-- Tools Menu Toggle -->
         <div class="controls">
-            <button onclick="fetchGraph()">↻ Reload</button>
-            <button class="secondary" onclick="fitGraph()">⛶ Fit</button>
-            <button class="secondary" id="clusterBtn" onclick="toggleClustering()">Cluster</button>
+             <button onclick="toggleTools()">🛠 Tools</button>
+             <button onclick="fetchGraph()">↻ Reload</button>
+             <button class="secondary" onclick="fitGraph()">⛶ Fit</button>
+             <button class="secondary" id="clusterBtn" onclick="toggleClustering()">Cluster</button>
+        </div>
+
+        <!-- Tools Panel (Hidden by default) -->
+        <div id="tools-panel" class="tools-panel" style="display:none; margin-top:10px; padding:10px; background:#161b22; border-radius:8px; border:1px solid #30363d;">
+            <h3>Create Node</h3>
+            <input id="tool-node-id" placeholder="ID (Auto if empty)">
+            <input id="tool-node-label" placeholder="Label">
+            <button onclick="apiCreateNode()">Creates</button>
+
+            <h3 style="margin-top:10px">Create Link</h3>
+            <input id="tool-link-from" placeholder="From ID">
+            <input id="tool-link-to" placeholder="To ID">
+            <input id="tool-link-type" placeholder="Type (e.g. KNOWS)">
+            <button onclick="apiCreateLink()">Link</button>
         </div>
 
         <div id="legend-container" class="legend"></div>
@@ -260,9 +304,25 @@
     <!-- Right Details Panel -->
     <div id="details-panel" class="hud top-right">
         <h2 id="node-title">Node Details</h2>
+        
+        <!-- Context Actions -->
+        <div class="controls" style="margin-bottom:10px; justify-content: flex-end;">
+            <button class="secondary" id="btn-edit" onclick="startEditMode()">✎ Edit</button>
+            <button class="secondary" id="btn-link" onclick="startLinkMode()">🔗 Link</button>
+            <button class="secondary" style="background:#da3633; border-color:#da3633; color:white" onclick="apiDeleteNode()">🗑 Delete</button>
+        </div>
+
         <table class="prop-table" id="prop-table">
             <!-- Props go here -->
         </table>
+        
+        <!-- Edit Mode Controls -->
+        <div id="edit-controls" style="display:none; margin-top:10px;">
+            <input id="edit-key" placeholder="New Property Key">
+            <input id="edit-val" placeholder="Value">
+            <button onclick="apiUpdateNode()">Update Prop</button>
+        </div>
+
         <div style="margin-top: 15px; text-align: right;">
             <button class="secondary" onclick="closeDetails()">Close</button>
         </div>
@@ -274,6 +334,7 @@
         let isClustered = false;
         const nodes = new vis.DataSet([]);
         const edges = new vis.DataSet([]);
+        let activeNodeId = null;
 
         // Color Palette for Auto-Coloring Labels
         const colors = ['#2f81f7', '#d2a8ff', '#7ee787', '#ff7b72', '#f2cc60', '#a5d6ff', '#ffa657'];
@@ -343,9 +404,68 @@
                         network.openCluster(nodeId);
                     }
                 }
+                hideContextMenu();
             });
 
+            network.on("oncontext", function (params) {
+                params.event.preventDefault();
+                activeNodeId = network.getNodeAt(params.pointer.DOM);
+                if (activeNodeId) {
+                    showContextMenu(params.pointer.DOM.x, params.pointer.DOM.y);
+                } else {
+                    hideContextMenu();
+                }
+            });
+
+            document.addEventListener('click', hideContextMenu);
+
+            setupContextMenu();
             fetchGraph();
+        }
+
+        function showContextMenu(x, y) {
+            const menu = document.getElementById('context-menu');
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+            menu.style.display = 'block';
+        }
+
+        function hideContextMenu() {
+            document.getElementById('context-menu').style.display = 'none';
+        }
+
+        function setupContextMenu() {
+            document.getElementById('ctx-copy-id').onclick = () => {
+                navigator.clipboard.writeText(activeNodeId).then(() => {
+                    // Maybe show a small notification?
+                });
+                hideContextMenu();
+            };
+            document.getElementById('ctx-set-from').onclick = () => {
+                document.getElementById('link-from').value = activeNodeId;
+                hideContextMenu();
+            };
+            document.getElementById('ctx-set-to').onclick = () => {
+                document.getElementById('link-to').value = activeNodeId;
+                hideContextMenu();
+            };
+            document.getElementById('ctx-delete-node').onclick = async () => {
+                if (confirm(`Are you sure you want to delete node "${activeNodeId}"?`)) {
+                    try {
+                        const response = await fetch(`/api/node/${activeNodeId}`, { method: 'DELETE' });
+                        if (response.ok) {
+                            fetchGraph();
+                        } else {
+                            const error = await response.json();
+                            alert("Error deleting node: " + error.error);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        alert("An error occurred while deleting the node.");
+                    }
+                }
+                hideContextMenu();
+            };
         }
 
         async function fetchGraph() {
@@ -570,7 +690,243 @@
             }
         });
 
+        function toggleTools() {
+            const panel = document.getElementById('tools-panel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // --- API INTERACTIONS ---
+
+        let selectedNodeId = null;
+        let linkSourceId = null;
+
+        function showDetails(nodeId) {
+            console.log("Show Details for:", nodeId);
+            selectedNodeId = nodeId;
+            const node = nodes.get(nodeId).data;
+            if (!node) return;
+
+            // Link Mode Check
+            if (linkSourceId && linkSourceId !== nodeId) {
+                // Complete the link
+                document.getElementById('tool-link-from').value = linkSourceId;
+                document.getElementById('tool-link-to').value = nodeId;
+                toggleTools(); // Show tools to confirm type
+                // auto-focus type
+                document.getElementById('tool-link-type').focus();
+                
+                // Reset mode
+                linkSourceId = null;
+                document.getElementById('network').style.cursor = 'default';
+                alert(`Linking ${linkSourceId} -> ${nodeId}. Please enter Type in Tools panel and click Link.`);
+                return;
+            }
+
+            const panel = document.getElementById('details-panel');
+            const table = document.getElementById('prop-table');
+            const title = document.getElementById('node-title');
+            
+            // Reset Edit Mode
+            document.getElementById('edit-controls').style.display = 'none';
+
+            title.innerHTML = `<span style="color:${getColorForLabel(node.label)}">${node.label}</span> <br> <span style="font-size:12px;color:#8b949e">${node.id}</span>`;
+            table.innerHTML = '';
+
+            if (node.properties) {
+                for (const [key, value] of Object.entries(node.properties)) {
+                    let valDisplay = value;
+                    if (Array.isArray(value)) valDisplay = `[${value.join(', ')}]`;
+                    table.innerHTML += `<tr><td class="prop-key">${key}</td><td class="prop-val">${valDisplay}</td></tr>`;
+                }
+            }
+            panel.classList.add('visible');
+            network.focus(nodeId, { scale: 1.2, animation: { duration: 500 } });
+            network.selectNodes([nodeId]);
+        }
+
+        function startEditMode() {
+            document.getElementById('edit-controls').style.display = 'block';
+            document.getElementById('edit-key').focus();
+        }
+
+        function startLinkMode() {
+            if(!selectedNodeId) return;
+            linkSourceId = selectedNodeId;
+            closeDetails();
+            document.getElementById('network').style.cursor = 'crosshair';
+            alert(`Select target node to link from ${linkSourceId}`);
+        }
+
+        async function apiCreateNode() {
+            const id = document.getElementById('tool-node-id').value || 'n' + Math.floor(Math.random()*10000);
+            const label = document.getElementById('tool-node-label').value || 'Node';
+            
+            try {
+                await fetch('/api/node', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ id, label, props: {} })
+                });
+                fetchGraph();
+                document.getElementById('tool-node-id').value = '';
+            } catch(e) { alert('Error: ' + e); }
+        }
+
+        async function apiUpdateNode() {
+             if(!selectedNodeId) return;
+             const key = document.getElementById('edit-key').value;
+             const val = document.getElementById('edit-val').value;
+             if(!key || !val) return;
+
+             try {
+                // Props must be a map
+                const props = {};
+                props[key] = val;
+                
+                await fetch('/api/node', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ id: selectedNodeId, props: props })
+                });
+                // Refresh local view
+                const nodeItem = nodes.get(selectedNodeId);
+                if(!nodeItem.data.properties) nodeItem.data.properties = {};
+                nodeItem.data.properties[key] = val;
+                nodes.update(nodeItem);
+                showDetails(selectedNodeId); // Refresh panel
+             } catch(e) { alert('Error: ' + e); }
+        }
+
+        async function apiDeleteNode() {
+            console.log("Attempting to delete node:", selectedNodeId);
+            if(!selectedNodeId) { console.error("No node selected"); return; }
+            
+            if(!confirm('Delete node ' + selectedNodeId + '?')) { console.log("Delete cancelled"); return; }
+            
+            try {
+                console.log("Sending DELETE request...");
+                await fetch(`/api/node?id=${selectedNodeId}`, { method: 'DELETE' });
+                console.log("Delete success");
+                closeDetails();
+                fetchGraph();
+            } catch(e) { 
+                console.error("Delete failed", e);
+                alert('Error: ' + e); 
+            }
+        }
+
+        async function apiCreateLink() {
+            const from = document.getElementById('tool-link-from').value;
+            const to = document.getElementById('tool-link-to').value;
+            const type = document.getElementById('tool-link-type').value;
+            if(!from || !to || !type) { alert('Missing fields'); return; }
+
+            try {
+                await fetch('/api/link', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ from, to, type })
+                });
+                fetchGraph();
+            } catch(e) { alert('Error: ' + e); }
+        }
+
         init();
+
+        async function addNode() {
+            const id = document.getElementById('add-node-id').value;
+            const label = document.getElementById('add-node-label').value;
+            const propsString = document.getElementById('add-node-props').value;
+            if (!id || !label) {
+                alert("Node ID and Label are required.");
+                return;
+            }
+
+            let props = {};
+            if (propsString) {
+                try {
+                    props = propsString.split(',').reduce((acc, curr) => {
+                        const [key, value] = curr.split(':');
+                        if (key && value) {
+                            acc[key.trim()] = value.trim();
+                        }
+                        return acc;
+                    }, {});
+                } catch (e) {
+                    alert("Invalid properties format. Use 'k:v,k:v'.");
+                    return;
+                }
+            }
+
+            try {
+                const vectorize = document.getElementById('add-node-vectorize').checked;
+                const response = await fetch('/api/node', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, label, props, vectorize })
+                });
+                if (response.ok) {
+                    fetchGraph();
+                    document.getElementById('add-node-id').value = '';
+                    document.getElementById('add-node-label').value = '';
+                    document.getElementById('add-node-props').value = '';
+                    document.getElementById('add-node-vectorize').checked = false;
+                } else {
+                    const error = await response.json();
+                    alert("Error adding node: " + error.error);
+                }
+            } catch (e) {
+                console.error(e);
+                alert("An error occurred.");
+            }
+        }
+
+        async function linkNodes() {
+            const from = document.getElementById('link-from').value;
+            const to = document.getElementById('link-to').value;
+            const type = document.getElementById('link-type').value;
+            if (!from || !to || !type) {
+                alert("From, To, and Type are required.");
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/link', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ from, to, type })
+                });
+                if (response.ok) {
+                    fetchGraph();
+                    document.getElementById('link-from').value = '';
+                    document.getElementById('link-to').value = '';
+                    document.getElementById('link-type').value = '';
+                } else {
+                    const error = await response.json();
+                    alert("Error linking nodes: " + error.error);
+                }
+            } catch (e) {
+                console.error(e);
+                alert("An error occurred.");
+            }
+        }
+
+        async function searchNodes() {
+            const query = document.getElementById('search-query').value;
+            if (!query) {
+                network.unselectAll();
+                return;
+            }
+            try {
+                const response = await fetch(`/api/search?q=${query}`);
+                const matches = await response.json();
+                const matchIds = matches.map(n => n.id);
+                network.selectNodes(matchIds);
+            } catch (e) {
+                console.error(e);
+                alert("An error occurred during search.");
+            }
+        }
     </script>
 </body>
 
