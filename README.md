@@ -1,5 +1,18 @@
 # AtlasDB-Lite v4.0
 
+## 📝 Proposed Changes
+This PR implements **Interactive Node Management** directly within the Web 4.0 Dashboard.
+- **Frontend Changes:**
+  - Added a **Tools Panel** for creating Nodes and Links.
+  - Implemented **Edit Mode** for real-time property updates.
+  - Added **Context Menus (Right-Click)** for quick actions (Copy ID, Link, Delete).
+  - Enhanced visual feedback for selection and clustering.
+- **Backend Changes:**
+  - `POST /api/node`: Create new nodes with custom properties.
+  - `PUT /api/node`: Update existing node properties.
+  - `DELETE /api/node/{id}`: Remove nodes from the graph.
+  - `POST /api/link`: Create directed edges between nodes.
+
 AtlasDB-Lite is a **scalable, serverless, and encrypted Knowledge Graph engine** written in pure Java.
 It is designed for **embedded environments** where you need Graph capabilities (Relationships, Pathfinding) without the overhead of Docker containers or heavy database servers.
 
@@ -16,8 +29,8 @@ It is designed for **embedded environments** where you need Graph capabilities (
 - **AQL (Atlas Query Language):**
   SQL-like filtering (e.g., `select User where age > 21`).
 
-- **Visual Dashboard:**
-  Built-in web server provides an interactive physics-based graph visualization.
+- **Interactive Web Dashboard:**
+  Built-in web server provides an interactive graph visualization with **Node & Link Management**.
 
 - **Secure:**
   All data at rest is encrypted with **AES-256**.
@@ -83,6 +96,11 @@ atlas-sharded> server start 8080
 # Open in browser
 http://localhost:8080
 ```
+
+**Web Interface Features:**
+- **Tools Panel:** Create Nodes and Links (Types & Properties).
+- **Direct Manipulation:** Select nodes to **Edit Properties**, **Delete**, or **Link** them visually.
+- **Right-Click Menu:** Quick access to ID copying and linking.
 
 ### 5. Importing Data from CSV
 You can bulk import nodes and links from CSV files.
