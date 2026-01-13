@@ -1,18 +1,5 @@
 # AtlasDB-Lite v4.0
 
-## 📝 Proposed Changes
-This PR implements **Interactive Node Management** directly within the Web 4.0 Dashboard.
-- **Frontend Changes:**
-  - Added a **Tools Panel** for creating Nodes and Links.
-  - Implemented **Edit Mode** for real-time property updates.
-  - Added **Context Menus (Right-Click)** for quick actions (Copy ID, Link, Delete).
-  - Enhanced visual feedback for selection and clustering.
-- **Backend Changes:**
-  - `POST /api/node`: Create new nodes with custom properties.
-  - `PUT /api/node`: Update existing node properties.
-  - `DELETE /api/node/{id}`: Remove nodes from the graph.
-  - `POST /api/link`: Create directed edges between nodes.
-
 AtlasDB-Lite is a **scalable, serverless, and encrypted Knowledge Graph engine** written in pure Java.
 It is designed for **embedded environments** where you need Graph capabilities (Relationships, Pathfinding) without the overhead of Docker containers or heavy database servers.
 
